@@ -37,12 +37,22 @@ window.EEB_CLOUD = (function () {
     sess = { at: j.access_token, rt: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000, uid: u.id || (sess && sess.uid), email: u.email || (sess && sess.email), name: md.name || (sess && sess.name) || "" };
     schreib(LS, sess);
   }
-  let erneuern = null;
+  let erneuern = null, abgelaufenGemeldet = false;
+  // Anmeldung abgelaufen: deutlich melden – Änderungen bleiben im Gerätespeicher und werden nach der Anmeldung übertragen
+  function abgelaufen() {
+    if (abgelaufenGemeldet) return; abgelaufenGemeldet = true;
+    try {
+      const el = h("div", { role: "alert", style: "position:fixed;left:12px;right:12px;top:max(10px,env(safe-area-inset-top));z-index:400;max-width:560px;margin:0 auto;background:#FFF3CC;color:#5A4300;border:1px solid #F0D27A;border-radius:14px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;gap:10px;align-items:center;flex-wrap:wrap" },
+        h("span", { style: "flex:1 1 220px;font-size:14px" }, "Ihre Anmeldung ist abgelaufen. Änderungen bleiben auf diesem Gerät und werden nach der Anmeldung übertragen."),
+        h("button", { class: "btn", style: "min-height:38px;padding:8px 14px", onclick: () => { el.remove(); anmeldeSheet(false); } }, "Anmelden"));
+      document.body.append(el);
+    } catch (e) { console.warn(e); }
+  }
   async function token(zwingen) {
     if (!sess) throw Object.assign(new Error("Nicht angemeldet"), { status: 401 });
     if (zwingen || Date.now() > sess.exp - 60000) {
       if (!erneuern) erneuern = auth("token?grant_type=refresh_token", { refresh_token: sess.rt }).then(setz).finally(() => { erneuern = null; });
-      try { await erneuern; } catch (e) { if (e.status === 400 || e.status === 401) { sess = null; schreib(LS, null); } throw e; }
+      try { await erneuern; } catch (e) { if (e.status === 400 || e.status === 401) { sess = null; schreib(LS, null); abgelaufen(); } throw e; }
     }
     return sess.at;
   }

@@ -5157,7 +5157,7 @@ const ABO_TARIFE = {
 const ABO_ID = t => "de.energieeffizientesbauen.eeberater." + t + ".jahr";
 const ABO_RANG = { start: 1, pro: 2, buero: 3 };
 const ABO = { bereit: false, tarif: null, periode: null, store: null, platform: null, fehler: "", server: null, serverBereit: false };
-const WEB_ABO = !NATIV && !!window.EEB_CLOUD;
+const WEB_ABO = !!window.EEB_CLOUD;   // Web-Version und App mit Konto: Abo vom EEBerater-Server (PayPal, Beta, Team)
 /** Store-Abo verfügbar (nur in der App aus dem Store) */
 function storeAktiv() { return !!(NATIV && window.CdvPurchase && ABO.store); }
 /** Abo-Pflicht: Store-App oder Web-Version mit eigenem Server. Ohne beides (claude.ai, iPad-Playgrounds) ist alles frei. */
@@ -5254,7 +5254,10 @@ function betaSheet() {
 }
 async function aboKaufen(t) {
   if (!aboAktiv()) { toast("In der Testversion ist alles freigeschaltet."); return; }
-  if (!storeAktiv()) return paypalKaufen(t);
+  if (!storeAktiv()) {
+    if (NATIV) { toast("Die Abos im App Store / Google Play kommen in Kürze. Bis dahin: Beta-Code einlösen oder Tarif in der Web-Version wählen."); return; }
+    return paypalKaufen(t);
+  }
   const pr = ABO.store.get(ABO_ID(t), ABO.platform); const o = pr && pr.getOffer();
   if (!o) { toast("Tarif ist im Store noch nicht verfügbar. Bitte später erneut versuchen."); return; }
   const err = await o.order(); if (err && err.code !== window.CdvPurchase.ErrorCode.PAYMENT_CANCELLED) toast("Kauf nicht abgeschlossen: " + (err.message || ""));
@@ -5282,7 +5285,7 @@ function aboRechtLinks() {
 function aboTarifeView(sperre) {
   const box = h("div"), C = window.EEB_CLOUD;
   const draw = () => rc(box,
-    h("p", { class: "mut", style: "margin:2px 0 12px;font-size:13.5px" }, "Jahresabo mit 12 Monaten Laufzeit – 2 Monate geschenkt gegenüber dem Monatspreis. " + (storeAktiv() ? "Preise inkl. USt., bezahlt über den Store." : WEB_ABO ? "Alle Preise zzgl. USt., bezahlt mit PayPal." : "Alle Preise zzgl. USt.")),
+    h("p", { class: "mut", style: "margin:2px 0 12px;font-size:13.5px" }, "Jahresabo mit 12 Monaten Laufzeit – 2 Monate geschenkt gegenüber dem Monatspreis. " + (storeAktiv() ? "Preise inkl. USt., bezahlt über den Store." : WEB_ABO && !NATIV ? "Alle Preise zzgl. USt., bezahlt mit PayPal." : "Alle Preise zzgl. USt.")),
     ...Object.entries(ABO_TARIFE).map(([t, d]) => h("div", { class: "abot" + (t === "pro" ? " empf" : "") + (aboStufe() === t ? " akt" : "") },
       t === "pro" ? h("span", { class: "abob" }, "Empfohlen") : null,
       h("div", { class: "abok" }, h("b", null, d.n), h("span", null, d.fuer)),
@@ -5307,7 +5310,7 @@ function aboSheet(grund) {
 function aboSperre() {
   if (!aboAktiv() || aboStufe() || document.querySelector(".abo-sperre")) return;
   if (window.EEB_CLOUD && !ABO.serverBereit) return;      // erst die Antwort vom Server abwarten
-  if (NATIV && !ABO.bereit && !WEB_ABO) return;
+  if (NATIV && window.CdvPurchase && !ABO.bereit) return;   // Store-Antwort abwarten
   const C = window.EEB_CLOUD, ohneKonto = C && !C.angemeldet(), a = ABO.server;
   const el = h("div", { class: "abo-sperre", role: "dialog", "aria-modal": "true", "aria-label": "Tarif wählen" },
     h("div", { class: "abo-in" },
