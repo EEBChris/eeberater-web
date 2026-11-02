@@ -5383,8 +5383,12 @@ function aboSperre() {
         h("b", { style: "color:var(--dg)" }, "Mitarbeiter eines Büros?"),
         h("p", { class: "mut", style: "margin:4px 0 10px" }, "Haben Sie von Ihrem Büro einen Einladungscode bekommen? Dann brauchen Sie keinen eigenen Tarif."),
         h("button", { type: "button", class: "btn wide", onclick: () => C.beitretenSheet() }, ic("plus"), "Einladungscode eingeben")),
-      ohneKonto && WEB_ABO ? null : aboTarifeView(true)));
+      ohneKonto && WEB_ABO ? null : aboTarifeView(true),
+      C && !ohneKonto ? h("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:18px 0 0;padding-top:12px;border-top:1px solid var(--line2)" },
+        h("span", { class: "mut" }, "Angemeldet als " + (C.email() || "")),
+        h("button", { type: "button", class: "btn sec", onclick: () => C.abmeldenFragen() }, ic("lock"), "Abmelden")) : null));
   document.body.append(el);
+  if (ohneKonto && WEB_ABO && !document.querySelector(".scrim")) setTimeout(() => { if (document.querySelector(".abo-sperre") && !document.querySelector(".scrim")) C.anmeldeSheet(false); }, 300);   // direkt zur Anmeldung
 }
 /** Funktion nur mit Pro (oder Büro) ausführen */
 function proNoetig(name, fn) { if (hatTarif("pro")) return fn(); aboSheet(name); }

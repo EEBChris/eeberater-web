@@ -392,6 +392,7 @@ window.EEB_CLOUD = (function () {
   const paypalEinrichten = () => fn("paypal-abo", { aktion: "einrichten" });
   const config = async () => Object.fromEntries(((await rest("GET", "app_config?select=k,v")) || []).map(x => [x.k, x.v]));
 
-  return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet, beitretenSheet,
+  return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet, beitretenSheet, email: () => sess && sess.email,
+    abmeldenFragen: () => ask("Abmelden?", status.offen ? "Achtung: " + status.offen + " Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Bitte erst mit Internet abgleichen." : "Ihre Daten bleiben im Konto. Danach können Sie sich mit einem anderen Konto anmelden.", "Abmelden", () => abmelden(), true),
     abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config };
 })();
