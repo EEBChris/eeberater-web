@@ -392,6 +392,6 @@ window.EEB_CLOUD = (function () {
   const paypalEinrichten = () => fn("paypal-abo", { aktion: "einrichten" });
   const config = async () => Object.fromEntries(((await rest("GET", "app_config?select=k,v")) || []).map(x => [x.k, x.v]));
 
-  return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet,
+  return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet, beitretenSheet,
     abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config };
 })();
