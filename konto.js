@@ -390,9 +390,10 @@ window.EEB_CLOUD = (function () {
   const betaEinloesen = async code => aboMerken(await rpc("beta_einloesen", { p_code: code }));
   const paypalAktivieren = async sub => { await fn("paypal-abo", { aktion: "aktivieren", sub }); return abo(); };
   const paypalEinrichten = () => fn("paypal-abo", { aktion: "einrichten" });
+  const smCode = kunde => rpc("sm_code_erstellen", { p_kunde: kunde || "" });   // Freischaltcode für die Sanierungsmappe (Tarif Pro/Büro)
   const config = async () => Object.fromEntries(((await rest("GET", "app_config?select=k,v")) || []).map(x => [x.k, x.v]));
 
   return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet, beitretenSheet, email: () => sess && sess.email,
     abmeldenFragen: () => ask("Abmelden?", status.offen ? "Achtung: " + status.offen + " Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Bitte erst mit Internet abgleichen." : "Ihre Daten bleiben im Konto. Danach können Sie sich mit einem anderen Konto anmelden.", "Abmelden", () => abmelden(), true),
-    abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config };
+    abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config, smCode };
 })();

@@ -4768,13 +4768,15 @@ function smEinladenSheet(k) {
     h("p", { class: "mut", style: "font-size:13px;margin-top:8px" }, "Link zur App: " + smAppLink()));
   sheet("Zur Sanierungsmappe einladen", body, [{ t: "Abbrechen", cls: "sec", fn: () => {} }, { t: "Einladung erstellen", fn: async () => { await smSenden(k, st, [], [], ft, "einladung"); } }]);
 }
-function smEinladungFertig(k, name, blob) {
+function smEinladungFertig(k, name, blob, code) {
   const link = smAppLink(), tel = String(k.tel || "").replace(/[^\d+]/g, ""), wa = tel.replace(/^\+/, "").replace(/^00/, "").replace(/^0/, "49");
-  const text = mailAnrede(k) + "\n\nich lade Sie herzlich zu Ihrer digitalen Sanierungsmappe ein. Dort haben Sie alles rund um Ihr Haus an einem Ort: Gebäudedaten, Sanierungsschritte mit Fotos, Kosten, Förderung und Rechnungen – und Sie können mir Unterlagen direkt schicken.\n\nSo geht es:\n1. App öffnen: " + link + "\n2. „Einladung einlesen“ antippen und die angehängte Datei „" + name + "“ auswählen.\n\nIhre Gebäudedaten und meine Kontaktdaten sind dann schon eingetragen.\n\n" + signatur();
-  const waText = mailAnrede(k) + ", hier ist Ihre Einladung zur digitalen Sanierungsmappe: " + link + " – Die Einladungsdatei schicke ich Ihnen gleich hinterher. In der App auf „Einladung einlesen“ tippen und die Datei auswählen.";
+  const text = mailAnrede(k) + "\n\nich lade Sie herzlich zu Ihrer digitalen Sanierungsmappe ein. Dort haben Sie alles rund um Ihr Haus an einem Ort: Gebäudedaten, Sanierungsschritte mit Fotos, Kosten, Förderung und Rechnungen – und Sie können mir Unterlagen direkt schicken.\n\nSo geht es:\n1. App öffnen: " + link + "\n2. „Einladung einlesen“ antippen und die angehängte Datei „" + name + "“ auswählen.\n\nIhre Gebäudedaten und meine Kontaktdaten sind dann schon eingetragen." + (code ? "\n\nDie Sanierungsmappe ist für Sie kostenlos. Ihr Freischaltcode: " + code + " – er wird beim Einlesen der Einladung automatisch eingetragen (bei Bedarf unter „Freischaltcode eingeben“)." : "") + "\n\n" + signatur();
+  const waText = mailAnrede(k) + ", hier ist Ihre Einladung zur digitalen Sanierungsmappe: " + link + " – Die Einladungsdatei schicke ich Ihnen gleich hinterher. In der App auf „Einladung einlesen“ tippen und die Datei auswählen." + (code ? " Die App ist für Sie kostenlos, Freischaltcode: " + code : "");
   const kopie = async () => { try { await navigator.clipboard.writeText(link); toast("Link kopiert"); } catch (e) { toast("Kopieren nicht möglich"); } };
   sheet("Einladung erstellt", h("div", null,
       h("p", { style: "margin:0 0 10px" }, "Schicken Sie dem Kunden den Link zur App und die Einladungsdatei „" + name + "“. Am einfachsten per E-Mail – dann ist die Datei angehängt und der Link steht im Text."),
+      code ? h("div", { class: "smwarn ok", style: "flex-direction:column;align-items:stretch" }, h("b", null, "Für den Kunden kostenlos – Freischaltcode " + code), h("span", null, "Steckt in der Einladungsdatei und schaltet die Sanierungsmappe beim Einlesen frei (bis zu 3 Geräte). Er steht auch in der E-Mail.")) :
+        h("p", { class: "smwarn" }, ic("info", "s"), " Ohne Freischaltcode: Der Kunde braucht dann ein eigenes Abo der Sanierungsmappe. Kostenlos einladen geht mit Konto im Tarif Pro oder Büro."),
       h("div", { class: "btnrow" },
         h("button", { type: "button", class: "btn", onclick: () => mailSheet({ to: k.email || "", betreff: "Einladung zu Ihrer digitalen Sanierungsmappe", text, pdf: blob, name }) }, ic("mail"), "Per E-Mail senden"),
         h("a", { class: "btn sec", href: "https://wa.me/" + (wa || "") + "?text=" + encodeURIComponent(waText), target: "_blank", rel: "noopener" }, ic("chat"), "Link per WhatsApp"),
@@ -4833,12 +4835,14 @@ async function smSenden(k, st, pakete, mit, termine, art) {
     try { const blob = await datBlob(f); if (!blob) continue; const id = "eeb-" + f.id; dateien[id] = { typ: f.typ || blob.type, daten: await smB64(blob) }; n++;
       if (!vorhanden.has(f.id)) b.dokumente.push({ id, dateiname: f.name, anzeigename: f.name.replace(/\.(pdf|jpe?g|png)$/i, ""), typ: f.typ || blob.type, datum: Date.now(), eeb: f.id, von: p.firma || p.name }); }
     catch (e) { console.warn(e); toast("„" + f.name + "“ konnte nicht gelesen werden."); } }
-  const paket = { app: "Sanierungsmappe", version: 1, art: ein ? "einladung" : "antwort", erstellt: new Date().toISOString(), von: { name: p.name, firma: p.firma, email: p.email, tel: p.tel }, berater: smBerater(), an: { name: kName(k) }, daten: d, dateien };
+  let smCodeNeu = null;
+  if (ein && window.EEB_CLOUD && EEB_CLOUD.angemeldet()) { try { smCodeNeu = await EEB_CLOUD.smCode(kName(k)); await akteAendern(k.id, a => { a.smCode = smCodeNeu; }); } catch (e) { console.warn(e); toast(e.message || "Freischaltcode konnte nicht erstellt werden"); } }
+  const paket = { app: "Sanierungsmappe", version: 1, art: ein ? "einladung" : "antwort", freischaltcode: smCodeNeu || undefined, erstellt: new Date().toISOString(), von: { name: p.name, firma: p.firma, email: p.email, tel: p.tel }, berater: smBerater(), an: { name: kName(k) }, daten: d, dateien };
   const blob = new Blob([JSON.stringify(paket)], { type: "application/json" }), mb = blob.size / 1048576;
   const name = ((ein ? "Einladung_Sanierungsmappe_" : "Sanierungsmappe_vom_Energieberater_") + (k.nachname || kName(k)) + "_" + heute()).replace(/[^\wäöüÄÖÜß.-]+/g, "_") + ".json";
   if (!ein) await saveFile(name, blob);
   await akteAendern(k.id, a => { (a.verlaufSm ||= []).unshift({ datum: heute(), text: ein ? "Einladung zur Sanierungsmappe erstellt" : "Paket an Kunden (" + n + " Unterlagen, " + nf(Math.max(.1, mb), 1) + " MB)" }); });
-  if (ein) return smEinladungFertig(k, name, blob);
+  if (ein) return smEinladungFertig(k, name, blob, smCodeNeu);
   const mail = mailAnrede(k) + "\n\nanbei erhalten Sie ein Datenpaket für Ihre App „Sanierungsmappe“" + (pk.length ? " mit Ihrem Sanierungsfahrplan" : "") + (n ? " und " + n + " Unterlagen" : "") + ".\n\nSo spielen Sie es ein: Datei auf dem Gerät speichern, in der Sanierungsmappe unter „Berater“ → „Datenpaket einspielen“ öffnen.\n\n" + signatur();
   sheet("Paket erstellt", h("div", null, h("p", { style: "margin:0 0 8px" }, "„" + name + "“ (" + nf(Math.max(.1, mb), 1) + " MB) ist gespeichert. Hängen Sie die Datei an eine E-Mail oder WhatsApp-Nachricht an den Kunden an."),
       mb > 20 ? h("p", { class: "smwarn" }, ic("info", "s"), " Für viele E-Mail-Postfächer ist die Datei zu groß. Nutzen Sie WhatsApp oder lassen Sie Unterlagen weg.") : null,
