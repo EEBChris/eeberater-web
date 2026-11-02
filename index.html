@@ -5720,4 +5720,28 @@ new MutationObserver(() => { if (!teamAktiv() || S.route.v !== "kunde" || docume
 
 </body></html>
 
+<script>
+/* Profil (Logo, Firmendaten, Unterschrift) live abgleichen: Änderungen von anderen Geräten ohne Neuladen übernehmen */
+(function () {
+  if (!window.EEB_CLOUD) return;
+  let pfad = null, aus = null;
+  setInterval(() => {
+    if (S.mode !== "cloud" || !S.db || !S.uid || !S.profil) return;
+    let ref; try { ref = Store.pDoc(); } catch (e) { return; }
+    if (!ref || ref.path === pfad) return;
+    if (aus) try { aus(); } catch (e) { }
+    pfad = ref.path;
+    aus = ref.onSnapshot(sn => {
+      if (!sn.exists) return;
+      const neu = Object.assign(clone(PROFIL_DEF), clone(sn.data()));
+      if (JSON.stringify(neu) === JSON.stringify(S.profil)) return;
+      for (const k of Object.keys(S.profil)) if (!(k in neu)) delete S.profil[k];
+      Object.assign(S.profil, neu);
+      const ae = document.activeElement, v = document.getElementById("view");
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && v && v.contains(ae)) return;   // nicht beim Tippen neu zeichnen
+      try { render(); } catch (e) { }
+    }, e => console.warn(e));
+  }, 1500);
+})();
+</script>
 </body></html>

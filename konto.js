@@ -227,7 +227,7 @@ window.EEB_CLOUD = (function () {
     const erster = DOCS.size === 0;
     const p = abgleichen();
     if (erster) await Promise.race([p, new Promise(r => setTimeout(r, 25000))]); else await Promise.race([p, new Promise(r => setTimeout(r, 4000))]);
-    setInterval(() => { if (document.visibilityState !== "hidden") abgleichen(); }, 20000);
+    setInterval(() => { if (document.visibilityState !== "hidden") abgleichen(); }, 30000);   // Abgleich mit dem Server alle 30 Sekunden
     window.addEventListener("online", abgleichen);
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") abgleichen(); });
     setTimeout(umzugPruefen, 1500);
