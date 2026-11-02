@@ -2610,9 +2610,10 @@ function pdfStart(title, sub, opt = {}) {
     P.y = y0 + 44; };
   P.finish = () => { const n = doc.getNumberOfPages(), stand = datDE(heute()), steuer = opt.brief || opt.steuer ? [p.steuernr && "Steuernummer " + p.steuernr, p.ustid && "USt-IdNr. " + p.ustid, p.inhaber && p.inhaber !== p.firma ? "Inhaber " + p.inhaber : ""].filter(Boolean).join("  ·  ") : "";
     for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setDrawColor(PC.line); doc.setLineWidth(.25); doc.line(M, P.H - 14, P.W - M, P.H - 14);
-      font("normal", 7, PC.ink3); T([p.firma, p.eeeNr ? "EEE-Nr. " + p.eeeNr : ""].filter(Boolean).join("  ·  "), M, P.H - 9.5); T(pt(title) + "  ·  Stand " + stand, P.W / 2, P.H - 9.5, { align: "center" });
-      font("bold", 7, PC.dg); T("Seite " + i + " / " + n, P.W - M, P.H - 9.5, { align: "right" });
-      if (steuer) { font("normal", 6.6, PC.ink3); T(steuer, M, P.H - 6); } }
+      font("normal", 7, PC.ink3); T(p.firma || "", M, P.H - 10); T(pt(title) + "  ·  Stand " + stand, P.W / 2, P.H - 10, { align: "center" });
+      if (p.eeeNr) T("EEE-Nr. " + p.eeeNr, M, P.H - 7);   // Experten-Nummer unter dem Firmennamen
+      font("bold", 7, PC.dg); T("Seite " + i + " / " + n, P.W - M, P.H - 10, { align: "right" });
+      if (steuer) { font("normal", 6.6, PC.ink3); T(steuer, M, P.H - 4.2); } }
     return doc.output("blob"); };
   return P;
 }
