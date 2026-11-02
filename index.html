@@ -347,6 +347,7 @@ input.inp[inputmode][readonly]{cursor:pointer;background:#fff}
 .abogr{background:#FEF3E6;color:#8A4A0B;border-radius:10px;padding:8px 10px;font-size:13px;margin:6px 0}
 .abot ul{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.5}
 .abo-sperre ~ .scrim{z-index:250}
+.hero.home .hlogo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:none}.hero.home .hname{font-size:13px;font-weight:600;color:var(--dg);margin-top:-6px;white-space:nowrap}
 .abo-sperre{position:fixed;inset:0;z-index:200;background:var(--bg,#F6FBF6);overflow-y:auto;padding:max(20px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
 .abo-in{max-width:560px;margin:0 auto}
 /* Team */
@@ -2043,7 +2044,7 @@ function vKunden(v) {
       ic("chev", "chev")))));
   };
   ap(v, navBar("Kunden", { actions: [S.sample ? h("button", { onclick: () => kiSheet(), "aria-label": "KI-Assistent", title: "KI-Assistent" }, ic("ki")) : null, h("button", { onclick: tourMenue, "aria-label": "Hilfe & Tutorials", title: "Hilfe & Tutorials" }, ic("info")), h("button", { onclick: () => go("kundeEdit", {}), "aria-label": "Kunde anlegen" }, ic("plus"))] }),
-    h("div", { class: "hero home" }, logo(), h("div", { class: "ht" }, h("h2", null, "EEBerater"), h("p", null, [S.profil.name, S.profil.logo || firmTeile()[1] ? null : S.profil.firma, "Energieeffizienz-Experte"].filter(Boolean).join(" · ")))),
+    h("div", { class: "hero home" }, h("div", { class: "hlogo" }, logo(), h("small", { class: "hname" }, typeof ichName === "function" ? ichName() : S.profil.name)), h("div", { class: "ht" }, h("h2", null, "EEBerater"), h("p", null, [S.profil.logo || firmTeile()[1] ? null : S.profil.firma, (typeof ichNr === "function" ? ichNr() : S.profil.eeeNr) ? "Berater-Nr. " + (typeof ichNr === "function" ? ichNr() : S.profil.eeeNr) : "Energieeffizienz-Experte"].filter(Boolean).join(" · ")))),
     modeBanner(), tourHinweis(), S.sample ? h("button", { type: "button", class: "kibar", onclick: () => kiSheet() }, ic("ki"), h("span", null, "KI-Assistent: Kunde anlegen, Termin eintragen, Beleg oder Typenschild fotografieren …")) : null, statBox, dash,
     h("label", { class: "search" }, ic("search", "s"), h("input", { placeholder: "Kunden suchen", value: S.q, "aria-label": "Kunden suchen", oninput: e => { S.q = e.target.value; draw(); } })),
     list,
@@ -2468,7 +2469,7 @@ function vMehr(v) {
     h("label", { class: "mut", style: "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13.5px" }, sigWeiss, "Weißen Hintergrund beim Hochladen entfernen (für eingescannte Unterschriften)"),
     h("p", { class: "mut", style: "font-size:12.5px;margin:6px 0 0" }, "PNG oder JPG, z. B. Unterschrift mit Firmenstempel. Das Bild wird automatisch zugeschnitten. Für BAFA-/KfW-Vollmachten bleibt die eigenhändige Unterschrift die sichere Variante."));
   drawSig();
-  ap(v, navBar("Einstellungen"), h("h1", { class: "ltitle" }, "Einstellungen"), modeBanner(), tourEinstKarte(), aboKarte(), window.EEB_CLOUD ? EEB_CLOUD.karte() : null, teamKarte(), bedienKarte(),
+  ap(v, navBar("Einstellungen"), h("h1", { class: "ltitle" }, "Einstellungen"), modeBanner(), tourEinstKarte(), typeof ichKarte === "function" ? ichKarte() : null, aboKarte(), window.EEB_CLOUD ? EEB_CLOUD.karte() : null, teamKarte(), bedienKarte(),
     formView([{ t: "Energieeffizienz-Experte und Firma", sub: "Erscheint auf Vollmachten, Protokollen und PDFs. Firmenname mit Gedankenstrich (z. B. „EEB – Energie Effizientes Bauen“) wird ohne Logo als Kurzname und Zusatz dargestellt.", f: [F.s("anrede", "Anrede", ["Herr", "Frau"]), F.t("name", "Name"), F.t("firma", "Firma"), F.t("strasse", "Straße", { full: 1 }), F.t("plz", "PLZ"), F.t("ort", "Ort"), F.t("tel", "Telefon"), F.t("email", "E-Mail"), F.t("web", "Website"), F.t("eeeNr", "Nr. Energieeffizienz-Expertenliste"), F.t("bafaNr", "BAFA-Nr. Energieauditor (optional)")] }], p, { onChange: save }),
     formView([{ t: "Honorar und Rechnungsdaten", sub: "Für Angebote, Rechnungen und die Aufwandserfassung.", f: [F.n("stundensatz", "Stundensatz netto", "€/Std."), F.n("kmSatz", "Kilometerpauschale", "€/km"), F.n("zahlziel", "Zahlungsziel", "Tage"), F.c("kleinunt", "Kleinunternehmer (keine Umsatzsteuer, § 19 UStG)"),
       F.t("steuernr", "Steuernummer"), F.t("ustid", "USt-IdNr.")] }], p, { onChange: save }),
@@ -5620,7 +5621,7 @@ async function teamJoinsPruefen() {
   if (!TEAM.owner || !teamAktiv()) return; let geaendert = false;
   for (const j of TEAM.joins) {
     const c = String(j.code || "").toUpperCase().trim(), e = TEAM.cfg.codes && TEAM.cfg.codes[c];
-    if (e && !TEAM.cfg.mitglieder[j.uid]) { TEAM.cfg.mitglieder[j.uid] = { vorlage: e.vorlage, rechte: clone(TEAM_VORL[e.vorlage] || TEAM_VORL.Berater), seit: heute(), notiz: e.notiz || "" };
+    if (e && !TEAM.cfg.mitglieder[j.uid]) { TEAM.cfg.mitglieder[j.uid] = { vorlage: e.vorlage, rechte: clone(e.rechte || TEAM_VORL[e.vorlage] || TEAM_VORL.Berater), seit: heute(), notiz: e.notiz || "" };
       delete TEAM.cfg.codes[c]; geaendert = true; toast("Neuer Mitarbeiter im Team" + (e.notiz ? ": " + e.notiz : "")); }
     if (e || TEAM.cfg.mitglieder[j.uid]) S.db.doc("teamjoin/" + j.uid).delete().catch(() => {});
   }
@@ -5638,13 +5639,24 @@ async function teamEinrichten() {
   TEAM.cfg = { aktiv: true, owner: S.uid, mitglieder: {}, codes: {}, seit: heute() }; await teamCfgSpeichern();
   await teamUmschalten(); render(); toast("Büro-Team eingerichtet – " + ks.length + " Kunden übernommen");
 }
+/** Schalter-Liste für die Rechte (Einladen und Ändern) */
+function teamSchalter(r, geaendert) {
+  return TEAM_RECHTE.map(([g, l]) => h("div", null, h("div", { style: "font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#178038;margin:12px 0 2px" }, g),
+    ...l.map(([k, t, x]) => h("label", { class: "tmsw" }, h("span", null, h("b", null, t), x ? h("small", null, x) : null),
+      h("input", { type: "checkbox", role: "switch", checked: !!r[k], onchange: e => { r[k] = e.target.checked; geaendert(); } })))));
+}
 function teamEinladen() {
-  let vorl = "Berater"; const notiz = h("input", { class: "inp", id: "tm_notiz", placeholder: "z. B. Anna Berger" });
-  const box = h("div"), draw = () => rc(box, h("div", { class: "seg bt", role: "group", style: "margin:4px 0 10px" }, Object.keys(TEAM_VORL).map(v => h("button", { type: "button", class: v === vorl ? "on" : "", onclick: () => { vorl = v; draw(); } }, v))),
-    h("p", { class: "mut", style: "font-size:13px;margin:0" }, { Berater: "Eigene Kunden, Aufnahmen, Vollmachten, Hottgenroth-Upload.", "Büro": "Alle Kunden, Angebote, Rechnungen, Mahnungen, BWA.", Alles: "Alles außer Team und Abo." }[vorl]));
+  let vorl = "Berater"; const r = clone(TEAM_VORL.Berater);
+  const notiz = h("input", { class: "inp", id: "tm_notiz", placeholder: "z. B. Anna Berger" });
+  const box = h("div"), draw = () => rc(box,
+    h("div", { class: "seg bt", role: "group", style: "margin:4px 0 6px" }, Object.keys(TEAM_VORL).map(v => h("button", { type: "button", class: v === vorl ? "on" : "", onclick: () => { vorl = v; Object.assign(r, TEAM_VORL[v]); draw(); } }, v))),
+    h("p", { class: "mut", style: "font-size:13px;margin:0" }, { Berater: "Eigene Kunden, Aufnahmen, Vollmachten, Hottgenroth-Upload.", "Büro": "Alle Kunden, Angebote, Rechnungen, Mahnungen, BWA.", Alles: "Alles außer Team und Abo.", Eigene: "Eigene Einstellung – mit den Schaltern unten festgelegt." }[vorl]),
+    ...teamSchalter(r, () => { vorl = "Eigene"; draw(); }));
   draw();
-  sheet("Mitarbeiter einladen", h("div", null, h("div", { class: "fld" }, h("label", { for: "tm_notiz" }, "Name (nur als Notiz für Sie)"), notiz), h("div", { class: "fld" }, h("label", null, "Rechte-Vorlage"), box)),
-    [{ t: "Abbrechen", cls: "sec", fn: () => {} }, { t: "Einladung erstellen", fn: async () => { const c = teamCode(); TEAM.cfg.codes = TEAM.cfg.codes || {}; TEAM.cfg.codes[c] = { vorlage: vorl, notiz: notiz.value.trim(), erstellt: heute() };
+  sheet("Mitarbeiter einladen", h("div", null, h("div", { class: "fld" }, h("label", { for: "tm_notiz" }, "Name (nur als Notiz für Sie)"), notiz),
+      h("div", { class: "fld" }, h("label", null, "Rechte – Vorlage wählen und mit den Schaltern anpassen"), box),
+      h("p", { class: "mut", style: "font-size:12.5px;margin:12px 0 0" }, "Ändern können Sie die Rechte jederzeit unter Team → Mitarbeiter antippen.")),
+    [{ t: "Abbrechen", cls: "sec", fn: () => {} }, { t: "Einladung erstellen", fn: async () => { const c = teamCode(); TEAM.cfg.codes = TEAM.cfg.codes || {}; TEAM.cfg.codes[c] = { vorlage: vorl, rechte: clone(r), notiz: notiz.value.trim(), erstellt: heute() };
       await teamCfgSpeichern(); teamCodeZeigen(c, notiz.value.trim()); } }]);
 }
 function teamCodeZeigen(c, n) {
@@ -5662,9 +5674,7 @@ function teamRechteSheet(id) {
   const box = h("div"), draw = () => rc(box,
     h("div", { class: "fld" }, h("label", null, "Vorlage"), h("div", { class: "seg bt", role: "group" }, Object.keys(TEAM_VORL).map(v => h("button", { type: "button", class: m.vorlage === v ? "on" : "", onclick: () => { Object.assign(r, TEAM_VORL[v]); m.vorlage = v; draw(); } }, v)))),
     m.vorlage === "Eigene" ? h("p", { class: "mut", style: "font-size:12.5px;margin:-4px 0 6px" }, "Eigene Einstellung") : null,
-    ...TEAM_RECHTE.map(([g, l]) => h("div", null, h("div", { style: "font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#178038;margin:12px 0 2px" }, g),
-      ...l.map(([k, t, x]) => h("label", { class: "tmsw" }, h("span", null, h("b", null, t), x ? h("small", null, x) : null),
-        h("input", { type: "checkbox", role: "switch", checked: !!r[k], onchange: e => { r[k] = e.target.checked; m.vorlage = "Eigene"; draw(); } }))))),
+    ...teamSchalter(r, () => { m.vorlage = "Eigene"; draw(); }),
     h("p", { class: "mut", style: "font-size:12.5px;margin:12px 0 0" }, "Team verwalten und das Abo bleiben immer beim Inhaber. Die Rechte steuern, was die App dem Mitarbeiter zeigt."));
   draw();
   sheet("Rechte: " + teamName(id), box, [{ t: "Aus dem Team entfernen", cls: "sec", fn: () => { ask("Mitarbeiter entfernen?", teamName(id) + (OHNE_CLAUDE ? " verliert sofort den Zugriff auf die Kunden und Daten des Büros." : " verliert den Zugriff auf die Team-Daten in der App. Entziehen Sie zusätzlich im Teilen-Menü den Zugang zur App."), "Entfernen", async () => { delete TEAM.cfg.mitglieder[id]; await teamCfgSpeichern(); render(); }, true); } },
@@ -5685,7 +5695,7 @@ function teamKarte() {
   return sec(h("p", { class: "sub" }, "Tarif Büro · " + plaetze + " von 3 Nutzern" + (plaetze > 3 ? " · " + (plaetze - 3) + " Zusatzplatz/-plätze à 290 € im Jahr" : "")),
     h("div", { class: "card list", style: "margin:0 0 10px" },
       h("div", { class: "row" }, h("div", { class: "av" }, "I"), h("div", { class: "rt" }, h("b", { class: "tmname", "data-id": S.uid }, teamName(S.uid)), h("span", null, "Inhaber"))),
-      ...ids.map(id => { const m = TEAM.cfg.mitglieder[id]; return h("button", { type: "button", class: "row", onclick: () => teamRechteSheet(id) }, h("div", { class: "av" }, "M"), h("div", { class: "rt" }, h("b", { class: "tmname", "data-id": id }, teamName(id)), h("span", null, (m.vorlage || "Eigene") + (m.notiz ? " · " + m.notiz : "") + " · seit " + datDE(m.seit))), ic("chev", "chev")); }),
+      ...ids.map(id => { const m = TEAM.cfg.mitglieder[id]; return h("button", { type: "button", class: "row", onclick: () => teamRechteSheet(id) }, h("div", { class: "av" }, "M"), h("div", { class: "rt" }, h("b", { class: "tmname", "data-id": id }, teamName(id)), h("span", null, (m.vorlage || "Eigene") + (m.notiz ? " · " + m.notiz : "") + " · seit " + datDE(m.seit) + " · Rechte ändern")), ic("chev", "chev")); }),
       ...offen.map(([c, e]) => h("div", { class: "row" }, h("div", { class: "av" }, "?"), h("div", { class: "rt" }, h("b", null, e.notiz || "Einladung"), h("span", null, "Code " + c + " · " + e.vorlage + " · noch nicht eingelöst")),
         h("button", { type: "button", class: "linkbtn", onclick: async () => { delete TEAM.cfg.codes[c]; await teamCfgSpeichern(); render(); } }, "Zurückziehen")))),
     h("button", { class: "btn", onclick: () => { if (plaetze + offen.length >= 3) ask("Zusatzplatz buchen?", "Ihr Büro-Tarif enthält 3 Nutzer. Jeder weitere Mitarbeiter kostet 290 € im Jahr (netto).", "Weiter", teamEinladen); else teamEinladen(); } }, ic("plus"), "Mitarbeiter einladen"));
@@ -5742,6 +5752,37 @@ new MutationObserver(() => { if (!teamAktiv() || S.route.v !== "kunde" || docume
       try { render(); } catch (e) { }
     }, e => console.warn(e));
   }, 1500);
+})();
+</script>
+<script>
+/* Meine Angaben: Name und Berater-Nummer je Konto (im Büro-Team hat jeder Mitarbeiter seine eigenen) */
+const ICH = { name: "", nr: "", geladen: false };
+function ichName() { return ICH.name || (typeof teamRolle === "function" && teamRolle() === "mitglied" && typeof teamName === "function" ? teamName(S.uid) : (S.profil && S.profil.name) || ""); }
+function ichNr() { return ICH.nr || (typeof teamRolle === "function" && teamRolle() === "mitglied" ? "" : (S.profil && S.profil.eeeNr) || ""); }
+function ichDoc() { return S.db && S.uid ? S.db.doc(`data/users/${S.uid}/ich`) : null; }
+async function ichSpeichern() {
+  if (S.mode === "cloud" && ichDoc()) await ichDoc().set({ name: ICH.name, nr: ICH.nr });
+  else { try { localStorage.setItem("eeb-ich-v1", JSON.stringify({ name: ICH.name, nr: ICH.nr })); } catch (e) { } }
+}
+function ichKarte() {
+  const save = debounce(async () => { await ichSpeichern(); }, 600);
+  const iN = h("input", { class: "inp", id: "ich_name", value: ICH.name, placeholder: ichName() || "Vor- und Nachname", oninput: e => { ICH.name = e.target.value.trim(); save(); } });
+  const iR = h("input", { class: "inp", id: "ich_nr", value: ICH.nr, placeholder: (S.profil && S.profil.eeeNr) || "z. B. 1234-5678-90", oninput: e => { ICH.nr = e.target.value.trim(); save(); } });
+  return h("section", { class: "card fsec" }, h("h4", null, "Meine Angaben"),
+    h("p", { class: "sub" }, "Ihr Name und Ihre Berater-Nummer (Energieeffizienz-Expertenliste) für dieses Konto. Sie stehen oben auf der Startseite – im Büro-Team hat jeder Mitarbeiter seine eigenen Angaben."),
+    h("div", { class: "fgrid" }, h("div", { class: "fld" }, h("label", { for: "ich_name" }, "Name"), iN), h("div", { class: "fld" }, h("label", { for: "ich_nr" }, "Berater-Nummer"), iR)));
+}
+(function () {
+  let pfad = null, aus = null;
+  const setz = d => { const n = (d && d.name) || "", r = (d && d.nr) || ""; if (n === ICH.name && r === ICH.nr && ICH.geladen) return; ICH.name = n; ICH.nr = r; ICH.geladen = true;
+    const ae = document.activeElement; if (ae && (ae.id === "ich_name" || ae.id === "ich_nr")) return; try { render(); } catch (e) { } };
+  setInterval(() => {
+    if (!S.profil) return;
+    if (S.mode !== "cloud" || !ichDoc()) { if (!ICH.geladen) { try { setz(JSON.parse(localStorage.getItem("eeb-ich-v1") || "null")); } catch (e) { ICH.geladen = true; } } return; }
+    const ref = ichDoc(), p = ref.path || ("ich/" + S.uid + "/" + (S.teamBase || ""));
+    if (p === pfad) return; if (aus) try { aus(); } catch (e) { } pfad = p;
+    aus = ref.onSnapshot(sn => setz(sn.exists ? sn.data() : null), e => console.warn(e));
+  }, 1000);
 })();
 </script>
 </body></html>
