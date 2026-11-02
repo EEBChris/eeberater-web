@@ -869,7 +869,7 @@ function field(f, data, ch) {
   }
   if (f.ty === "seg") {
     const s = h("div", { class: "seg" + (f.cls ? " " + f.cls : ""), role: "radiogroup", id });
-    for (const [val, lab] of optsOf(f, data)) { const b = h("button", { type: "button", class: data[f.k] === val ? "on" : "", role: "radio", "aria-checked": String(data[f.k] === val) }, lab); b.onclick = () => { data[f.k] = val; ch(f); if (!f.re) [...s.children].forEach(x => x.classList.toggle("on", x === b)); }; s.append(b); }
+    for (const [val, lab] of optsOf(f, data)) { const b = h("button", { type: "button", class: data[f.k] === val ? "on" : "", role: "radio", "aria-checked": String(data[f.k] === val) }, lab); b.onclick = () => { data[f.k] = val; if (f.after) f.after(data); ch(f); if (!f.re) [...s.children].forEach(x => x.classList.toggle("on", x === b)); }; s.append(b); }
     return h("div", { class: cls }, h("span", { class: "lb" }, f.l), s);
   }
   const ph = typeof f.ph === "function" ? f.ph(data) : (f.ph || "");
@@ -2500,7 +2500,7 @@ function vMehr(v) {
       F.i("Die Rechnungsnummer muss einmalig sein. Wenn du bisher z. B. bis RE-2026-014 geschrieben hast, trage bei „Zuletzt vergebene Rechnungs-Nr.“ 14 ein.")] }], p, { onChange: save }),
     formView([{ t: "Bankverbindung", sub: "Erscheint in Angeboten und Rechnungen. Bei einer deutschen IBAN werden BLZ und Kontonummer automatisch ergänzt.", f: [F.t("inhaber", "Kontoinhaber", { full: 1 }), F.t("bank", "Name der Bank"), F.t("bic", "BIC"),
       F.t("iban", "IBAN", { full: 1, re: 1 }), F.t("blz", "Bankleitzahl (BLZ)", { im: "numeric" }), F.t("kto", "Kontonummer", { im: "numeric" }),
-      F.c("bankAng", "Bankverbindung in Angeboten anzeigen"), F.c("bankRe", "Bankverbindung in Rechnungen anzeigen"), F.c("qr", "QR-Code zum Bezahlen (GiroCode) auf Rechnungen")] }], p, { onChange: f => { bankAbleiten(p); save(); } }),
+      F.s("bankStil", "Darstellung in Angeboten und Rechnungen", [["box", "Grüne Box (bisher)"], ["zeile", "A – eine dezente Textzeile"], ["leise", "B – feine Linie, ohne Box"], ["fuss", "C – klein über der Fußzeile"]], { full: 1 }), F.c("bankAng", "Bankverbindung in Angeboten anzeigen"), F.c("bankRe", "Bankverbindung in Rechnungen anzeigen"), F.c("qr", "QR-Code zum Bezahlen (GiroCode) auf Rechnungen")] }], p, { onChange: f => { bankAbleiten(p); save(); } }),
     logoBox(),
     h("section", { class: "card fsec" }, h("h4", null, "Meine Unterschrift"), sigBox), textVorlagenVerwalten(),
     formulareBox(),
@@ -2627,6 +2627,7 @@ function pdfStart(title, sub, opt = {}) {
     P.y = y0 + 44; };
   P.finish = () => { const n = doc.getNumberOfPages(), stand = datDE(heute()), steuer = opt.brief || opt.steuer ? [p.steuernr && "Steuernummer " + p.steuernr, p.ustid && "USt-IdNr. " + p.ustid, p.inhaber && p.inhaber !== p.firma ? "Inhaber " + p.inhaber : ""].filter(Boolean).join("  ·  ") : "";
     for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setDrawColor(PC.line); doc.setLineWidth(.25); doc.line(M, P.H - 14, P.W - M, P.H - 14);
+      if (P.bankFuss) { font("normal", 6.6, PC.ink3); T(P.bankFuss, P.W / 2, P.H - 16, { align: "center" }); }
       font("normal", 7, PC.ink3); T(p.firma || "", M, P.H - 10); T(pt(title) + "  ·  Stand " + stand, P.W / 2, P.H - 10, { align: "center" });
       if (p.eeeNr) T("EEE-Nr. " + p.eeeNr, M, P.H - 7);   // Experten-Nummer unter dem Firmennamen
       font("bold", 7, PC.dg); T("Seite " + i + " / " + n, P.W - M, P.H - 10, { align: "right" });
@@ -3135,7 +3136,7 @@ const CALC2 = {
       const v = r.krit.vl; return { big: v > 90 ? "> 90 °C" : nf(v) + " °C Vorlauf", sub: "erforderlich im kritischsten Raum (" + r.krit.n + ") bei " + nf(num(d.sp)) + " K Spreizung", ampel: v <= 45 ? ["g", "Sehr gut für eine Wärmepumpe geeignet"] : v <= 55 ? ["y", "Wärmepumpe geeignet – kritische Räume ggf. optimieren"] : ["r", "Für eine Wärmepumpe Heizkörper in den kritischen Räumen vergrößern"],
         rows, notes: ["Heizlast je Raum als Richtwert aus Fläche × spezifischer Heizlast, sofern keine raumweise Heizlastberechnung eingetragen ist.", "Heizkörper-Normleistungen nach Typ und Maß sind Richtwerte (75/65/20 °C, Exponent 1,3) – genaue Werte aus dem Herstellerdatenblatt eintragen.", "Volumenströme als Grundlage für die Voreinstellung der Thermostatventile (hydraulischer Abgleich)."], sum: v }; } },
   honorar: {
-    init: (k, art = "angebot") => Object.assign({ art, nr: naechsteNr(art), nrAuto: true, datum: heute(), ziel: S.profil.zahlziel || "14", ust: S.profil.kleinunt ? "0" : "19", we: k && k.we || "1", text: "", pos: [], e_email: k && k.email || "" }, empfVon(k)),
+    init: (k, art = "angebot") => Object.assign({ art, nr: naechsteNr(art), nrAuto: true, datum: heute(), ziel: S.profil.zahlziel || "14", ust: S.profil.kleinunt ? "0" : "19", we: k && k.we || "1", text: "", schluss: schlussStd(art), pos: [], e_email: k && k.email || "" }, empfVon(k)),
     calc(d) { const r = honCalc(d); return { big: eur(r.brutto), sub: belegTitel(d) + " " + d.nr + (r.zus ? " · abzüglich BAFA-Zuschuss " + eur(r.zus) + " → Eigenanteil " + eur(r.eigen) : ""), rows: [["Summe netto", eur(r.netto)], ["Umsatzsteuer " + num(d.ust) + " %", eur(r.ust)], ["Gesamtbetrag", eur(r.brutto), "b"], ...(r.zus ? [["BAFA-Zuschuss Energieberatung", "− " + eur(r.zus)], ["Eigenanteil Kunde", eur(r.eigen), "b"]] : [])], notes: [], sum: r.brutto }; } }
 };
 /* Heizkörper-Check */
@@ -3201,7 +3202,7 @@ function honorarView(x, change, k) {
     F.t("e_strasse", "Straße und Hausnummer", { full: 1 }), F.t("e_plz", "PLZ", { im: "numeric" }), F.t("e_ort", "Ort"), F.t("e_email", "E-Mail (auch für die E-Rechnung)", { im: "email" }), F.t("e_objekt", "Objekt (falls abweichend)", { full: 1 }),
     F.t("e_gruss", "Briefanrede", { full: 1, ph: d => briefAnrede(Object.assign({}, d, { e_gruss: "" })) })] }], d, { onChange: change }),
     h("div", { class: "btnrow", style: "margin:-4px 0 12px" }, h("button", { class: "btn sec", onclick: () => pickKunde(uebernehmen) }, ic("users"), k ? "Anschrift von anderem Kunden" : "Anschrift von Kunde übernehmen"), k ? h("button", { class: "btn sec", onclick: () => uebernehmen(kundeAktuell(k.id) || k) }, ic("house"), "Kundendaten neu laden") : null));
-  box.append(formView([{ t: "Dokument", f: [d.art === "storno" ? F.i("Stornorechnung – hebt die ursprüngliche Rechnung auf.") : F.seg("art", "Art", [["angebot", "Angebot"], ["rechnung", "Rechnung"], ["abschlag", "Abschlag"]]), F.t("nr", "Nummer"), F.d("datum", "Datum"), F.n("ziel", "Zahlungsziel", "Tage", { show: z => istRe(z) && z.art !== "storno" }),
+  box.append(formView([{ t: "Dokument", f: [d.art === "storno" ? F.i("Stornorechnung – hebt die ursprüngliche Rechnung auf.") : F.seg("art", "Art", [["angebot", "Angebot"], ["rechnung", "Rechnung"], ["abschlag", "Abschlag"]], { after: z => { if (schlussIstVorlage(z.schluss)) z.schluss = schlussStd(z.art); } }), F.t("nr", "Nummer"), F.d("datum", "Datum"), F.n("ziel", "Zahlungsziel", "Tage", { show: z => istRe(z) && z.art !== "storno" }),
     F.d("l_von", "Leistung von", { show: istRe }), F.d("l_bis", "Leistung bis / Leistungsdatum", { show: istRe }), F.t("bref", "Käuferreferenz / Leitweg-ID", { show: istRe, ph: () => "nur für E-Rechnung, bei Behörden Pflicht" }),
     F.s("ust", "Umsatzsteuer", [["19", "19 %"], ["7", "7 %"], ["0", "keine (Kleinunternehmer § 19 UStG)"]]), F.seg("foerd", "BAFA-Zuschuss Energieberatung abziehen", [["ja", "Ja"], ["nein", "Nein"]]), F.n("we", "Wohneinheiten (für Förderhöchstbetrag)", ""), F.a("text", "Einleitungstext (optional)")] }], d, { onChange: change }), textVorlageWahl(x, "ein", "text", change));
   const sec = h("section", { class: "card fsec" }, h("h4", null, "Positionen"));
@@ -3278,6 +3279,23 @@ async function bankBlock(P, zahl) {
   const p = S.profil, doc = P.doc, M = P.M, CW = P.W - 2 * M, q = zahl ? await qrMatrix(giroText(p, zahl.betrag, zahl.zweck)) : null, qs = q ? 26 : 0;
 
   const cells = [["Kontoinhaber", p.inhaber || p.name], ["Bank", p.bank], ["IBAN", ibanFmt(p.iban)], ["BIC", p.bic], ["BLZ / Konto", [p.blz, p.kto].filter(Boolean).join(" / ")]].filter(c => c[1]);
+  const stil = p.bankStil || "box";
+  const qrZeichnen = (x0, y0) => { if (!q) return; const n = q.getModuleCount(), ms = qs / n; doc.setFillColor("#FFFFFF"); doc.rect(x0 - 1, y0 - 1, qs + 2, qs + 2, "F"); doc.setFillColor("#000000");
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) doc.rect(x0 + c * ms, y0 + r * ms, ms + .01, ms + .01, "F");
+    P.font("normal", 6, PC.ink3); P.T("GiroCode – mit der Banking-App scannen", x0 + qs / 2, y0 + qs + 3, { align: "center" }); };
+  const kurz = cells.filter(c => c[0] !== "BLZ / Konto");
+  if (stil === "zeile") {   // eine dezente Textzeile, keine Box
+    const t = kurz.map(([l, v]) => l === "Kontoinhaber" || l === "Bank" ? v : l + " " + v).join("  ·  ");
+    const zeilen = P.split("Bankverbindung: " + t, CW - (q ? qs + 8 : 0)); const hh = Math.max(q ? qs + 7 : 0, zeilen.length * 3.6 + 2); P.need(hh + 6); P.y += 4; const y = P.y;
+    P.font("normal", 7.6, PC.ink2); P.T(zeilen, M, y + 3); qrZeichnen(P.W - M - qs, y); P.y = y + hh + 3; return; }
+  if (stil === "leise") {   // ohne Füllung, feine Linie oben, Werte normal statt fett
+    const hh = Math.max(q ? qs + 8 : 0, 13); P.need(hh + 6); P.y += 4; const y = P.y;
+    doc.setDrawColor(PC.line); doc.setLineWidth(.2); doc.line(M, y, P.W - M - (q ? qs + 6 : 0), y);
+    const n = kurz.length, colW = (CW - (q ? qs + 8 : 0)) / Math.max(1, n);
+    kurz.forEach(([l, v], i) => { const cx = M + i * colW; P.font("normal", 6.4, PC.ink3); P.T(l, cx, y + 4.5); P.font("normal", 7.8, PC.ink2); P.T(P.split(v, colW - 2)[0], cx, y + 8.4); });
+    qrZeichnen(P.W - M - qs, y + 1); P.y = y + hh + 2; return; }
+  if (stil === "fuss") { P.bankFuss = "Bankverbindung: " + kurz.map(([l, v]) => l === "Kontoinhaber" || l === "Bank" ? v : l + " " + v).join("  ·  ");   // steht klein über der Fußzeile jeder Seite
+    if (q) { P.need(qs + 8); P.y += 3; qrZeichnen(P.W - M - qs, P.y); P.y += qs + 6; } return; }
   const hh = Math.max(qs + 10, 11 + Math.ceil(cells.length / 2) * 7.2 + 2); P.need(hh + 6); P.y += 3; const y = P.y;
   doc.setFillColor(PC.mint2); doc.setDrawColor(PC.line); doc.setLineWidth(.25); doc.roundedRect(M, y, CW, hh, 2, 2, "FD");
   P.font("bold", 7, PC.g); P.T("BANKVERBINDUNG", M + 5, y + 6, { charSpace: .4 });
@@ -3701,7 +3719,7 @@ function belegNeu(art) {
 }
 async function inRechnung(kid, id) {
   const a = await Store.getVorgang(kid, id); if (!a) return;
-  const d = clone(a.d); d.art = "rechnung"; d.nr = naechsteNr("rechnung"); d.datum = heute(); d.ziel = S.profil.zahlziel || "14"; d.text = ""; d.l_von = ""; d.l_bis = ""; d.nrAuto = true;
+  const d = clone(a.d); d.art = "rechnung"; d.nr = naechsteNr("rechnung"); d.datum = heute(); d.ziel = S.profil.zahlziel || "14"; d.text = ""; if (schlussIstVorlage(d.schluss)) d.schluss = schlussStd("rechnung"); d.l_von = ""; d.l_bis = ""; d.nrAuto = true;
   const x = belegNeuV(d, { ref: { id: a.id, nr: a.d.nr, datum: a.d.datum, art: "angebot" } }); await Store.saveVorgang(kid, x);
   await belegAendern(kid, id, y => { y.beleg.status = "abgerechnet"; y.beleg.folge = { id: x.id, nr: d.nr }; });
   toast("Rechnung " + d.nr + " aus Angebot " + a.d.nr + " erstellt"); go("calc", { kid, id: x.id, v: x });
@@ -3988,14 +4006,21 @@ const BELEG_TEXTE = {
   schluss: {
     angebot: [["Standard", "Ich freue mich auf Ihren Auftrag. Bei Fragen stehe ich Ihnen gern zur Verfügung."],
       ["Mit Auftragsbestätigung", "Wenn Sie mit dem Angebot einverstanden sind, senden Sie es mir bitte unterschrieben zurück oder bestätigen Sie den Auftrag kurz per E-Mail. Ich melde mich dann umgehend für die Terminabstimmung."],
-      ["Förderantrag vor Beginn", "Bitte beachten Sie: Fördermittel müssen vor Beginn der Maßnahme beantragt werden. Unterschreiben Sie Verträge mit Handwerksbetrieben daher erst nach der Antragstellung oder nur mit auflösender bzw. aufschiebender Bedingung."]],
+      ["Förderantrag vor Beginn", "Bitte beachten Sie: Fördermittel müssen vor Beginn der Maßnahme beantragt werden. Unterschreiben Sie Verträge mit Handwerksbetrieben daher erst nach der Antragstellung oder nur mit auflösender bzw. aufschiebender Bedingung."],
+      ["Terminabstimmung", "Nach Ihrer Auftragsbestätigung melde ich mich kurzfristig bei Ihnen, um einen Termin für die Vor-Ort-Aufnahme abzustimmen. Für Rückfragen bin ich jederzeit gern für Sie da."]],
     rechnung: [["Standard", "Vielen Dank für Ihren Auftrag und Ihr Vertrauen."],
       ["Weitere Begleitung", "Vielen Dank für Ihren Auftrag. Gern begleite ich Sie auch bei den nächsten Schritten Ihrer Sanierung – sprechen Sie mich einfach an."],
-      ["Steuerbonus § 35c / § 35a", "Hinweis: Die Kosten für Energieberatung bzw. Handwerkerleistungen können unter Umständen steuerlich berücksichtigt werden (§ 35c / § 35a EStG). Bitte sprechen Sie dazu mit Ihrer Steuerberatung."]],
+      ["Steuerbonus § 35c / § 35a", "Hinweis: Die Kosten für Energieberatung bzw. Handwerkerleistungen können unter Umständen steuerlich berücksichtigt werden (§ 35c / § 35a EStG). Bitte sprechen Sie dazu mit Ihrer Steuerberatung."],
+      ["Bezahlen per GiroCode", "Am schnellsten bezahlen Sie mit dem GiroCode: einfach mit Ihrer Banking-App scannen – Betrag, Empfänger und Verwendungszweck sind bereits ausgefüllt. Vielen Dank für Ihren Auftrag."]],
     abschlag: [["Standard", "Vielen Dank. Die Abschlagszahlung wird in der Schlussrechnung verrechnet."]],
     storno: [["Standard", "Bereits gezahlte Beträge werden Ihnen umgehend erstattet."]]
   }
 };
+/** Standard-Schlusstext aus den Einstellungen (Angebot bzw. Rechnung/Abschlag) */
+const schlussArt = a => a === "angebot" ? "angebot" : a === "storno" ? "storno" : "rechnung";
+function schlussStd(art) { return ((S.profil && S.profil.schlussStd) || {})[schlussArt(art)] || ""; }
+/** Ist der Schlusstext noch ein unveränderter Standard/Vorlagentext? Dann darf er beim Wechsel der Art ersetzt werden */
+function schlussIstVorlage(t) { if (!t) return true; const st = (S.profil && S.profil.schlussStd) || {}; return Object.values(st).includes(t) || Object.values(BELEG_TEXTE.schluss).some(l => l.some(v => v[1] === t)); }
 function belegTextFuellen(t, d, x) {
   const obj = d.e_objekt || (S.subKid && kundeAktuell(S.subKid) ? objAdr(kundeAktuell(S.subKid)) : ""), ref = x && x.beleg && x.beleg.ref;
   return t.replace("{objekt_bei}", obj ? " (" + obj + ")" : "").replace("{objekt_fuer}", obj ? " für das Objekt " + obj : "")
@@ -4020,7 +4045,15 @@ function textVorlagenVerwalten() {
     rc(box, l.length ? h("div", { class: "card list" }, l.map((v, i) => h("div", { class: "row" }, h("div", { class: "rt" }, h("b", null, v.t), h("span", null, (v.feld === "ein" ? "Einleitung" : "Schlusstext") + " · " + (v.art === "alle" ? "alle Belege" : BELEG_ART[v.art]) + " · " + v.text.slice(0, 70) + (v.text.length > 70 ? " …" : ""))),
       h("button", { type: "button", class: "x", "aria-label": "Vorlage löschen", onclick: () => ask("Vorlage löschen?", "„" + v.t + "“ wird entfernt.", "Löschen", () => { l.splice(i, 1); Store.saveProfil(); draw(); }, true) }, ic("trash", "s")))))
       : h("p", { class: "mut", style: "margin:0" }, "Noch keine eigenen Vorlagen. Im Angebot oder in der Rechnung einen Text schreiben und „Als Vorlage“ tippen.")); };
-  draw(); return h("section", { class: "card fsec" }, h("h4", null, "Eigene Textvorlagen für Angebote und Rechnungen"), box);
+  const p = S.profil, st = p.schlussStd ||= {}, save = debounce(() => Store.saveProfil(), 600);
+  const stdBlock = (art, titel) => { const ta = h("textarea", { class: "inp", id: "schluss_" + art, rows: 3, placeholder: "leer = kein Schlusstext", oninput: e => { st[art] = e.target.value; save(); } }); ta.value = st[art] || "";
+    const opts = [...BELEG_TEXTE.schluss[art], ...(p.textVorl || []).filter(v => v.feld === "schluss" && (v.art === art || v.art === "alle")).map(v => [v.t, v.text])];
+    const sel = h("select", { class: "inp", "aria-label": "Vorlage " + titel }, h("option", { value: "" }, "Formtext auswählen …"), opts.map((o, i) => h("option", { value: String(i) }, o[0])));
+    sel.onchange = () => { const o = opts[+sel.value]; if (!o) return; ta.value = st[art] = o[1]; save(); sel.value = ""; toast("„" + o[0] + "“ als Standard für " + titel + " eingesetzt"); };
+    return h("div", { class: "fld" }, h("label", { for: "schluss_" + art }, titel), sel, ta); };
+  const std = h("div", { style: "margin-bottom:14px" }, h("p", { class: "sub", style: "margin:0 0 4px" }, "Steht automatisch in jedem neuen Angebot bzw. jeder neuen Rechnung vor dem Gruß. Formtext auswählen oder eigenen Text schreiben – im einzelnen Beleg lässt er sich weiterhin ändern."),
+    stdBlock("angebot", "Standard-Schlusstext Angebot"), stdBlock("rechnung", "Standard-Schlusstext Rechnung und Abschlag"));
+  draw(); return h("section", { class: "card fsec" }, h("h4", null, "Eigene Textvorlagen für Angebote und Rechnungen"), std, h("b", { style: "display:block;font-size:13px;color:var(--ink2);margin:6px 0" }, "Eigene Vorlagen"), box);
 }
 /** Unterschrift (auch mit Stempel) als Bilddatei hochladen → PNG, optional weißer Hintergrund transparent */
 function sigBildLaden(file, weiss, done) {
