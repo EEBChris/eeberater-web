@@ -217,6 +217,13 @@ window.EEB_CLOUD = (function () {
     await idbAuf();
     try { await token(); } catch (e) { if (!sess) { setTimeout(() => hinweis("Bitte melden Sie sich erneut an (Einstellungen → Konto)."), 1500); return null; } }
     const bm = lies(LSB) || {}; bereich = bm[sess.uid] || sess.uid;
+    // Büro-Zugehörigkeit vom Server holen (z. B. neues Gerät oder anderer Browser): sonst landet der Mitarbeiter im leeren eigenen Bereich
+    if (bereich === sess.uid) {
+      try {
+        const z = await rest("GET", "bereich_zugang?select=bereich&user_id=eq." + sess.uid);
+        for (const x of z || []) { if (x.bereich && x.bereich !== sess.uid && await rpc("ist_mitglied_b", { b: x.bereich }) === true) { bereich = x.bereich; bm[sess.uid] = bereich; schreib(LSB, bm); break; } }
+      } catch (e) { console.warn(e); }
+    }
     for (const [p, d] of await cacheAlle()) DOCS.set(p, d);
     for (const [, e] of await queueAlle()) if (e.b === bereich) OFFEN.set(e.p, (OFFEN.get(e.p) || 0) + 1);
     status.offen = [...OFFEN.values()].reduce((a, b) => a + b, 0);
@@ -231,6 +238,7 @@ window.EEB_CLOUD = (function () {
     window.addEventListener("online", abgleichen);
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") abgleichen(); });
     setTimeout(umzugPruefen, 1500);
+    autoAbmeldenStart();
     // Team-Status erst prüfen, wenn die App im Konto-Modus läuft (der Team-Start käme sonst zu früh)
     const tw = setInterval(() => { if (S.mode === "cloud" && typeof teamInit === "function") { clearInterval(tw);
       teamInit().then(() => { try { if (teamRolle() === "fremd") teamOverlay(); render(); } catch (e) { } }).catch(e => console.warn(e)); } }, 100);
@@ -241,6 +249,44 @@ window.EEB_CLOUD = (function () {
     };
     return { db: DB, user, uid: sess.uid };
   }
+
+  /* ---------- Automatisch abmelden nach 30 Minuten ohne Aktivität ---------- */
+  const LSAKT = "eeb-aktiv-v1", inaktivMs = () => window.EEB_INAKTIV_MS || 30 * 60 * 1000;
+  let aktivZeit = Date.now(), aktivGespeichert = 0, warnEl = null, autoGestartet = false;
+  function aktiv() {
+    aktivZeit = Date.now();
+    if (warnEl) { warnEl.remove(); warnEl = null; }
+    if (aktivZeit - aktivGespeichert > 20000) { aktivGespeichert = aktivZeit; schreib(LSAKT, aktivZeit); }
+  }
+  async function autoAbmelden() {
+    try { await flush(); } catch (e) { }
+    if (status.offen > 0) {   // ohne Netz nicht abmelden – sonst gingen Änderungen verloren
+      hinweis("Automatische Abmeldung verschoben: " + status.offen + " Änderung(en) sind noch nicht übertragen."); aktivZeit = Date.now() - inaktivMs() + 5 * 60 * 1000; return; }
+    try { sessionStorage.setItem("eeb-auto-ab", "1"); } catch (e) { }
+    schreib(LSAKT, null);
+    await abmelden(true); location.reload();
+  }
+  function autoPruefen() {
+    if (!sess) return;
+    const zuletzt = Math.max(aktivZeit, Number(lies(LSAKT)) || 0), rest = inaktivMs() - (Date.now() - zuletzt);   // andere Tabs zählen mit
+    if (rest <= 0) { autoAbmelden(); return; }
+    if (rest <= 60000 && !warnEl) {
+      warnEl = h("div", { role: "alert", style: "position:fixed;left:12px;right:12px;bottom:max(84px,calc(70px + env(safe-area-inset-bottom)));z-index:400;max-width:560px;margin:0 auto;background:#1C3324;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:center;flex-wrap:wrap" },
+        h("span", { style: "flex:1 1 220px;font-size:14px" }, "Sie werden in einer Minute automatisch abgemeldet (30 Minuten ohne Aktivität)."),
+        h("button", { class: "btn", style: "min-height:38px;padding:8px 14px", onclick: () => aktiv() }, "Angemeldet bleiben"));
+      document.body.append(warnEl);
+    }
+  }
+  function autoAbmeldenStart() {
+    if (autoGestartet || !sess) return; autoGestartet = true;
+    const zuletzt = Number(lies(LSAKT)) || 0;
+    if (zuletzt && Date.now() - zuletzt > inaktivMs()) { autoAbmelden(); return; }   // App war länger als 30 Minuten zu
+    aktiv();
+    ["pointerdown", "keydown", "touchstart", "wheel", "scroll"].forEach(e => window.addEventListener(e, aktiv, { passive: true, capture: true }));
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") autoPruefen(); });
+    setInterval(autoPruefen, 10000);
+  }
+  try { if (sessionStorage.getItem("eeb-auto-ab")) { sessionStorage.removeItem("eeb-auto-ab"); setTimeout(() => hinweis("Sie wurden nach 30 Minuten ohne Aktivität automatisch abgemeldet."), 1200); } } catch (e) { }
 
   /* ---------- Bisherige Daten des Geräts übernehmen ---------- */
   async function umzugVorbereiten() {
@@ -259,6 +305,7 @@ window.EEB_CLOUD = (function () {
 
   /* ---------- Aktionen ---------- */
   async function nachAnmeldung() {
+    schreib(LSAKT, Date.now());
     if (S.mode === "lokal") { try { await umzugVorbereiten(); } catch (e) { console.warn(e); } }
     location.reload();
   }
