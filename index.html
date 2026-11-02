@@ -2643,6 +2643,16 @@ async function saveFile(name, blob) {
   try { await S.dl.save({ filename: name, data: blob }); } catch (e) { if (e && e.code === "declined") return; toast(e && e.code === "rate_limited" ? "Bitte kurz warten und erneut tippen." : "Datei konnte nicht gespeichert werden."); }
 }
 const fname = (k, t) => (t + " " + (k ? kName(k) : "") + " " + heute()).replace(/[^\wäöüÄÖÜß .-]+/g, "").replace(/\s+/g, "_") + ".pdf";
+/** PDF: Pauschalwerte aus der Baualtersklasse mit U-Wert bzw. Herkunft ausweisen */
+function pdfUWert(f, val, d) {
+  let t = fmtVal(f, val, d);
+  if (!t || !f.k) return t;
+  if (/_typ$/.test(f.k)) { const p = f.k.slice(0, -4), v = typVal(val, d[p + "_bak"]); if (v != null) t = t.replace(/ – [\d,.]+$| – k\. A\.$/, "") + " – U = " + nf(v, 2) + " W/(m²K)"; return t; }
+  const pre = f.k === "u_alt" ? "bt" : /_u$/.test(f.k) ? f.k.slice(0, -2) : null;
+  if (pre && d[pre + "_typ"] && d[pre + "_bak"] !== "" && d[pre + "_bak"] != null) { const v = typVal(d[pre + "_typ"], d[pre + "_bak"]);
+    if (v != null && Math.abs(num(val) - v) < 0.005) t += " (Pauschalwert nach Baualtersklasse " + (BAK[+d[pre + "_bak"]] || "") + ")"; }
+  return t;
+}
 async function pdfVorgang(k, x, zeigen) {
   toast("PDF wird erstellt …");
   const T = TYPEN[x.typ]; const P = pdfStart(x.titel || T.name, T.name !== (x.titel || T.name) ? T.name : "", { art: x.typ === "vollmacht" ? "Vollmacht" : T.calc ? "Berechnung" : "Protokoll", meta: [["Auftraggeber", (k.anrede && k.anrede !== "Firma" ? k.anrede + " " : "") + kName(k)], ["Objekt", objAdr(k)], ["Datum", datDE((x.d && x.d.datum) || lokalTag(x.created))], ["Status", x.status === "fertig" ? "abgeschlossen" : "in Bearbeitung"]] }); if (!P) return;
@@ -2657,7 +2667,7 @@ async function pdfVorgang(k, x, zeigen) {
       const val = x.d[f.k];
       if (f.ty === "chk") { if (x.typ === "vollmacht" || val) P.check(f.l, !!val); continue; }
       if (f.ty === "tri") { P.status(f.l, val && val.s, val && val.n); continue; }
-      P.kv(f.l, fmtVal(f, val, x.d)); }
+      P.kv(f.l, pdfUWert(f, val, x.d)); }
     const fotos = (x.fotos || {})[sec.k] || []; if (fotos.length) { P.y += 1; await P.imgs(fotos.map(src)); }
   }
   if (T.items && x.items && x.items.length) { P.sect("Prüfpunkte"); for (const it of x.items) { P.status(it.t || "(ohne Titel)", it.s, it.n); if (it.f && it.f.length) await P.imgs(it.f.map(src)); } }
@@ -2899,8 +2909,12 @@ async function pdfZeigen(blob, name, mail) {
   } catch (e) {
     console.warn("PDF-Vorschau", e); url = URL.createObjectURL(blob);
     pages.replaceChildren(h("div", { class: "info", style: "margin:12px" }, "Die Vorschau konnte nicht angezeigt werden (" + (e instanceof Event ? "PDF-Anzeige konnte nicht geladen werden" : String(e && (e.message || e.name) || e)) + "). Mit „Speichern“ oder „E-Mail“ oben kannst du das PDF trotzdem öffnen oder weitergeben."),
-      h("iframe", { class: "pvf", src: url, title: "PDF-Vorschau" }));
+      h("div", { class: "btnrow", style: "margin:0 12px 12px" }, h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", style: "text-decoration:none" }, ic("file"), "PDF in neuem Fenster öffnen")),
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || NATIV ? null : h("iframe", { class: "pvf", src: url, title: "PDF-Vorschau" }));   // Handys zeigen PDFs im Rahmen nur als weiße Seite
   }
+  // Sicherheitsnetz: bleibt die Seite leer (Darstellung hängt), nach 15 s den Öffnen-Knopf anbieten
+  setTimeout(() => { if (!document.body.contains(scr) || pages.querySelector("canvas, iframe, .info")) return; if (!url) url = URL.createObjectURL(blob);
+    pages.replaceChildren(h("div", { class: "info", style: "margin:12px" }, "Die Vorschau braucht ungewöhnlich lange."), h("div", { class: "btnrow", style: "margin:0 12px 12px" }, h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", style: "text-decoration:none" }, ic("file"), "PDF in neuem Fenster öffnen"))); }, 15000);
 }
 
 /* ============ Kundenakte: Status, Fristen, Zeiten ============ */
