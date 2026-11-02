@@ -346,6 +346,7 @@ input.inp[inputmode][readonly]{cursor:pointer;background:#fff}
 .abop{display:flex;align-items:baseline;gap:6px;margin:6px 0 4px;flex-wrap:wrap}.abop b{font-size:30px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}.abop span{color:var(--ink2);font-size:13.5px}
 .abogr{background:#FEF3E6;color:#8A4A0B;border-radius:10px;padding:8px 10px;font-size:13px;margin:6px 0}
 .abot ul{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.5}
+.abo-sperre ~ .scrim{z-index:250}
 .abo-sperre{position:fixed;inset:0;z-index:200;background:var(--bg,#F6FBF6);overflow-y:auto;padding:max(20px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
 .abo-in{max-width:560px;margin:0 auto}
 /* Team */
@@ -443,371 +444,7 @@ section.klapp>h4 .klz,section.klapp>.akh .klz{font-size:12.5px;font-weight:500;c
 <nav id="tabs"><div class="in"></div></nav>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script>
-/* ============ EEBerater-Konto: eigener Server (Supabase, EU) ============
-   Nur außerhalb von claude.ai aktiv (App aus dem Store, eigenständige Version).
-   Stellt dieselbe Schnittstelle bereit wie der eingebaute Speicher (db.doc/collection, get/set/delete/onSnapshot),
-   damit Kunden, Team und Rechte unverändert funktionieren. Offline-fähig: alles liegt zusätzlich im Gerätespeicher,
-   Änderungen ohne Netz werden gesammelt und beim nächsten Kontakt übertragen. */
-window.EEB_CLOUD = (function () {
-  if (window.claude && window.claude.use) return null;
-  const URL_ = "https://gxsugyrsvrnwzhujthbe.supabase.co", KEY = "sb_publishable_zcQ3hI_DgrvjbrTb8zPunA_tgGjf1qP";
-  const LS = "eeb-konto-v1", LSB = "eeb-bereich-v1", LSZ = "eeb-sync-v1";
-  const lies = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
-  const schreib = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
-  const kopie = o => o == null ? o : JSON.parse(JSON.stringify(o));
-  let sess = lies(LS), bereich = null, letzterSync = null, status = { offen: 0, zuletzt: null, fehler: "" };
-
-  /* ---------- Anmeldung ---------- */
-  function fehlerText(j, st) {
-    const m = String((j && (j.error_description || j.msg || j.message || j.error)) || ("Fehler " + st));
-    if (/invalid login|invalid_credentials/i.test(m)) return "E-Mail oder Passwort ist falsch.";
-    if (/not confirmed/i.test(m)) return "Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse – der Link steht in der Bestätigungs-Mail.";
-    if (/already registered|already been registered|user_already_exists/i.test(m)) return "Für diese E-Mail gibt es schon ein Konto. Bitte melden Sie sich an.";
-    if (/password should|weak_password|at least/i.test(m)) return "Das Passwort ist zu kurz oder zu einfach (mindestens 8 Zeichen).";
-    if (/token.*(expired|invalid)|otp_expired/i.test(m)) return "Der Code ist falsch oder abgelaufen. Bitte prüfen oder neu anfordern.";
-    if (/rate limit|too many/i.test(m)) return "Zu viele Versuche. Bitte warten Sie einige Minuten.";
-    if (/invalid.*email|email_address_invalid/i.test(m)) return "Bitte eine gültige E-Mail-Adresse eingeben.";
-    return m;
-  }
-  async function auth(pfad, body, mitToken) {
-    const hd = { apikey: KEY, "Content-Type": "application/json" };
-    if (mitToken && sess) hd.Authorization = "Bearer " + sess.at;
-    const r = await fetch(URL_ + "/auth/v1/" + pfad, { method: "POST", headers: hd, body: JSON.stringify(body || {}) });
-    const t = await r.text(); let j = {}; try { j = t ? JSON.parse(t) : {}; } catch (e) { }
-    if (!r.ok) { const e = new Error(fehlerText(j, r.status)); e.status = r.status; throw e; }
-    return j;
-  }
-  function setz(j) {
-    const u = j.user || {}, md = u.user_metadata || {};
-    sess = { at: j.access_token, rt: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000, uid: u.id || (sess && sess.uid), email: u.email || (sess && sess.email), name: md.name || (sess && sess.name) || "" };
-    schreib(LS, sess);
-  }
-  let erneuern = null;
-  async function token(zwingen) {
-    if (!sess) throw Object.assign(new Error("Nicht angemeldet"), { status: 401 });
-    if (zwingen || Date.now() > sess.exp - 60000) {
-      if (!erneuern) erneuern = auth("token?grant_type=refresh_token", { refresh_token: sess.rt }).then(setz).finally(() => { erneuern = null; });
-      try { await erneuern; } catch (e) { if (e.status === 400 || e.status === 401) { sess = null; schreib(LS, null); } throw e; }
-    }
-    return sess.at;
-  }
-  async function rest(method, pfad, body, prefer, nochmal) {
-    const hd = { apikey: KEY, Authorization: "Bearer " + await token(), "Content-Type": "application/json" };
-    if (prefer) hd.Prefer = prefer;
-    const r = await fetch(URL_ + "/rest/v1/" + pfad, { method, headers: hd, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (r.status === 401 && !nochmal) { await token(true); return rest(method, pfad, body, prefer, true); }
-    const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { }
-    if (!r.ok) { const e = new Error((j && (j.message || j.hint)) || ("Serverfehler " + r.status)); e.status = r.status; e.code = j && j.code; throw e; }
-    return j;
-  }
-  const rpc = (name, args) => rest("POST", "rpc/" + name, args || {});
-
-  /* ---------- Gerätespeicher (IndexedDB) ---------- */
-  let idb = null;
-  function idbAuf() {
-    return new Promise((res) => {
-      if (!window.indexedDB) return res(null);
-      const r = indexedDB.open("eeb-cloud", 1);
-      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("docs"); d.createObjectStore("queue", { autoIncrement: true }); d.createObjectStore("extra"); };
-      r.onsuccess = () => { idb = r.result; res(idb); }; r.onerror = () => res(null);
-    });
-  }
-  function idbReq(store, mode, fn) {
-    return new Promise((res, rej) => { if (!idb) return res(null); const tx = idb.transaction(store, mode), st = tx.objectStore(store); const q = fn(st); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); });
-  }
-  const cacheKey = p => bereich + "|" + p;
-  function cacheAlle() {
-    return new Promise(res => {
-      if (!idb) return res([]);
-      const out = [], q = idb.transaction("docs", "readonly").objectStore("docs").openCursor(IDBKeyRange.bound(bereich + "|", bereich + "|￿"));
-      q.onsuccess = () => { const c = q.result; if (c) { if (!/\/dateidaten\//.test(c.key)) out.push([c.key.slice(bereich.length + 1), c.value]); c.continue(); } else res(out); };
-      q.onerror = () => res(out);
-    });
-  }
-  const cachePut = (p, d) => idbReq("docs", "readwrite", st => d == null ? st.delete(cacheKey(p)) : st.put(d, cacheKey(p))).catch(() => { });
-  const cacheGet = p => idbReq("docs", "readonly", st => st.get(cacheKey(p))).catch(() => null);
-  const extraGet = k => idbReq("extra", "readonly", st => st.get(k)).catch(() => null);
-  const extraPut = (k, v) => idbReq("extra", "readwrite", st => v == null ? st.delete(k) : st.put(v, k)).catch(() => { });
-  function queueAlle() {
-    return new Promise(res => {
-      if (!idb) return res(MEMQ.slice());
-      const out = [], q = idb.transaction("queue", "readonly").objectStore("queue").openCursor();
-      q.onsuccess = () => { const c = q.result; if (c) { out.push([c.key, c.value]); c.continue(); } else res(out); }; q.onerror = () => res(out);
-    });
-  }
-  const MEMQ = []; let memqId = 0;
-  async function queueAdd(e) { if (!idb) { MEMQ.push([++memqId, e]); return; } await idbReq("queue", "readwrite", st => st.add(e)).catch(() => MEMQ.push([++memqId, e])); }
-  async function queueDel(keys) { if (!idb) { for (const k of keys) { const i = MEMQ.findIndex(x => x[0] === k); if (i >= 0) MEMQ.splice(i, 1); } return; } await idbReq("queue", "readwrite", st => { keys.forEach(k => st.delete(k)); }).catch(() => { }); }
-
-  /* ---------- Dokumente im Speicher ---------- */
-  const DOCS = new Map(), OFFEN = new Map(); // OFFEN: Pfad → Anzahl noch nicht übertragener Änderungen
-  const norm = p => String(p).split("/").filter(Boolean).join("/");
-  const elternVon = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
-  const istDatei = p => /\/dateidaten\/[^/]+$/.test(p);
-  const snap = (p, d) => ({ exists: d != null, id: p.split("/").pop(), ref: { path: p }, data: () => d == null ? undefined : kopie(d) });
-  function colSnap(p) {
-    const docs = []; for (const [k, d] of DOCS) if (elternVon(k) === p) docs.push(snap(k, d));
-    docs.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    return { docs, empty: !docs.length, size: docs.length, forEach: f => docs.forEach(f) };
-  }
-  const HOERER = new Set(); let geaendert = new Set(), meldePlan = false;
-  function melde(pfade) {
-    pfade.forEach(p => geaendert.add(p));
-    if (meldePlan) return; meldePlan = true;
-    setTimeout(() => {
-      meldePlan = false; const g = geaendert; geaendert = new Set();
-      const eltern = new Set([...g].map(elternVon));
-      for (const l of HOERER) { try { if (l.t === "d" ? g.has(l.p) : eltern.has(l.p)) l.cb(l.t === "d" ? snap(l.p, DOCS.get(l.p)) : colSnap(l.p)); } catch (e) { console.warn(e); } }
-    }, 0);
-  }
-  function hoere(l) { HOERER.add(l); setTimeout(() => { if (HOERER.has(l)) try { l.cb(l.t === "d" ? snap(l.p, DOCS.get(l.p)) : colSnap(l.p)); } catch (e) { console.warn(e); } }, 0); return () => HOERER.delete(l); }
-  async function schreibe(p, d) {
-    if (d == null) DOCS.delete(p); else DOCS.set(p, d);
-    OFFEN.set(p, (OFFEN.get(p) || 0) + 1); status.offen++;
-    cachePut(p, d); await queueAdd({ b: bereich, p, d: d == null ? null : d });
-    melde([p]); planeFlush();
-  }
-  async function holeEinzel(p) {
-    const c = await cacheGet(p); if (c != null) return c;
-    try { const r = await rest("GET", "bereich_doc?select=daten,geloescht&bereich=eq." + bereich + "&pfad=eq." + encodeURIComponent(p));
-      const d = r && r[0] && !r[0].geloescht ? r[0].daten : null; if (d != null) cachePut(p, d); return d; } catch (e) { return null; }
-  }
-  function docRef(p) {
-    p = norm(p);
-    return { id: p.split("/").pop(), path: p,
-      get: async () => { let d = DOCS.get(p); if (d === undefined && istDatei(p)) d = await holeEinzel(p); return snap(p, d); },
-      set: async o => schreibe(p, kopie(o)),
-      update: async o => schreibe(p, Object.assign(kopie(DOCS.get(p)) || {}, kopie(o))),
-      delete: async () => schreibe(p, null),
-      collection: n => colRef(p + "/" + n),
-      onSnapshot: (cb, err) => hoere({ t: "d", p, cb, err }) };
-  }
-  async function dateienHolen(p) { // Datei-Teile werden nicht vorab geladen – bei Bedarf vom Server holen
-    try { const rows = await rest("GET", "bereich_doc?select=pfad,daten&bereich=eq." + bereich + "&eltern=eq." + encodeURIComponent(p) + "&geloescht=is.false");
-      for (const r of rows || []) if (!OFFEN.has(r.pfad)) { DOCS.set(r.pfad, r.daten); cachePut(r.pfad, r.daten); } } catch (e) { console.warn(e); }
-    return colSnap(p);
-  }
-  function colRef(p) { p = norm(p); return { path: p, id: p.split("/").pop(), doc: id => docRef(p + "/" + (id || uidNeu())), get: async () => /\/dateidaten$/.test(p) ? dateienHolen(p) : colSnap(p), onSnapshot: (cb, err) => hoere({ t: "c", p, cb, err }) }; }
-  const uidNeu = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "");
-  const DB = { doc: docRef, collection: colRef };
-
-  /* ---------- Abgleich mit dem Server ---------- */
-  let flushLaeuft = false, flushTimer = null;
-  function planeFlush() { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 400); }
-  async function flush() {
-    if (flushLaeuft || !sess) return; flushLaeuft = true;
-    try {
-      for (let runde = 0; runde < 50; runde++) {
-        const q = await queueAlle(); if (!q.length) break;
-        // nur Einträge des aktuellen Bereichs, pro Pfad zählt die letzte Änderung
-        const fremd = q.filter(([, e]) => e.b !== bereich).map(([k]) => k); if (fremd.length) await queueDel(fremd);
-        const eig = q.filter(([, e]) => e.b === bereich), last = new Map(); for (const [k, e] of eig) last.set(e.p, [k, e]);
-        let paket = [], groesse = 0, keys = [];
-        for (const [k, e] of eig) { if (last.get(e.p)[0] !== k) { keys.push(k); continue; } const s = e.d == null ? 50 : JSON.stringify(e.d).length; if (paket.length && (groesse + s > 1500000 || paket.length >= 40)) break; paket.push(e); keys.push(k); groesse += s; }
-        if (!paket.length) { await queueDel(keys); continue; }
-        try {
-          await rest("POST", "bereich_doc?on_conflict=bereich,pfad", paket.map(e => ({ bereich, pfad: e.p, daten: e.d, geloescht: e.d == null })), "resolution=merge-duplicates,return=minimal");
-        } catch (e) {
-          if (e.status === 401 || e.status === 403 || e.code === "42501") {
-            if (paket.length > 1) { // einzeln versuchen, damit nur die gesperrten verworfen werden
-              for (const x of paket) { try { await rest("POST", "bereich_doc?on_conflict=bereich,pfad", [{ bereich, pfad: x.p, daten: x.d, geloescht: x.d == null }], "resolution=merge-duplicates,return=minimal"); } catch (e2) { if (!(e2.status === 401 || e2.status === 403 || e2.code === "42501")) throw e2; hinweis("Keine Berechtigung – eine Änderung wurde nicht gespeichert."); } }
-            } else hinweis("Keine Berechtigung – die Änderung wurde nicht gespeichert.");
-            letzterSync = "1970-01-01T00:00:00Z"; // Serverstand vollständig neu holen
-          } else throw e;
-        }
-        await queueDel(keys);
-        for (const e of paket) { const n = (OFFEN.get(e.p) || 1) - 1; n > 0 ? OFFEN.set(e.p, n) : OFFEN.delete(e.p); }
-        status.offen = Math.max(0, status.offen - keys.length);
-      }
-      status.offen = (await queueAlle()).length; status.fehler = "";
-    } catch (e) { status.fehler = navigator.onLine === false ? "offline" : (e.message || String(e)); }
-    finally { flushLaeuft = false; }
-  }
-  let syncLaeuft = null;
-  function sync() { if (!syncLaeuft) syncLaeuft = syncIntern().finally(() => { syncLaeuft = null; }); return syncLaeuft; }
-  async function syncIntern() {
-    if (!sess) return;
-    const z = lies(LSZ) || {}; let ab = letzterSync || z[bereich] || "1970-01-01T00:00:00Z";
-    const neu = [];
-    for (let s = 0; s < 200; s++) {
-      const rows = await rest("GET", "bereich_doc?select=pfad,daten,geloescht,geaendert&bereich=eq." + bereich + "&geaendert=gte." + encodeURIComponent(ab) + "&eltern=not.like.*dateidaten&order=geaendert.asc&limit=500");
-      for (const r of rows) {
-        if (OFFEN.has(r.pfad)) continue; // eigene, noch nicht übertragene Änderung hat Vorrang
-        const alt = DOCS.get(r.pfad), d = r.geloescht ? null : r.daten;
-        if (JSON.stringify(alt) !== JSON.stringify(d === null ? undefined : d)) { if (d == null) DOCS.delete(r.pfad); else DOCS.set(r.pfad, d); cachePut(r.pfad, d); neu.push(r.pfad); }
-      }
-      if (rows.length) ab = rows[rows.length - 1].geaendert;
-      if (rows.length < 500) break;
-    }
-    letzterSync = ab; z[bereich] = ab; schreib(LSZ, z);
-    status.zuletzt = new Date(); status.fehler = "";
-    if (neu.length) melde(neu);
-  }
-  async function abgleichen() { try { await flush(); await sync(); } catch (e) { status.fehler = navigator.onLine === false ? "offline" : (e.message || String(e)); } }
-  function hinweis(t) { try { toast(t); } catch (e) { console.warn(t); } }
-
-  /* ---------- Start ---------- */
-  async function verbinden() {
-    if (!sess) return null;
-    await idbAuf();
-    try { await token(); } catch (e) { if (!sess) { setTimeout(() => hinweis("Bitte melden Sie sich erneut an (Einstellungen → Konto)."), 1500); return null; } }
-    const bm = lies(LSB) || {}; bereich = bm[sess.uid] || sess.uid;
-    for (const [p, d] of await cacheAlle()) DOCS.set(p, d);
-    for (const [, e] of await queueAlle()) if (e.b === bereich) OFFEN.set(e.p, (OFFEN.get(e.p) || 0) + 1);
-    status.offen = [...OFFEN.values()].reduce((a, b) => a + b, 0);
-    // Noch Mitglied im Büro? Sonst zurück in den eigenen Bereich.
-    if (bereich !== sess.uid) {
-      try { const ok = await rpc("ist_mitglied_b", { b: bereich }); if (ok === false) { bm[sess.uid] = null; schreib(LSB, bm); bereich = sess.uid; DOCS.clear(); OFFEN.clear(); for (const [p, d] of await cacheAlle()) DOCS.set(p, d); setTimeout(() => hinweis("Sie sind nicht mehr Mitglied im Büro – Sie arbeiten wieder in Ihrem eigenen Bereich."), 1500); } } catch (e) { }
-    }
-    const erster = DOCS.size === 0;
-    const p = abgleichen();
-    if (erster) await Promise.race([p, new Promise(r => setTimeout(r, 25000))]); else await Promise.race([p, new Promise(r => setTimeout(r, 4000))]);
-    setInterval(() => { if (document.visibilityState !== "hidden") abgleichen(); }, 20000);
-    window.addEventListener("online", abgleichen);
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") abgleichen(); });
-    setTimeout(umzugPruefen, 1500);
-    const user = {
-      id: async () => sess.uid,
-      isOwner: async () => bereich === sess.uid,
-      profiles: async ids => { const out = {}; try { const r = await rpc("namen", { ids: ids.filter(Boolean) }); for (const x of r || []) out[x.id] = { name: x.name }; } catch (e) { } if (ids.includes(sess.uid) && !out[sess.uid]) out[sess.uid] = { name: sess.name || "Ich" }; return out; }
-    };
-    return { db: DB, user, uid: sess.uid };
-  }
-
-  /* ---------- Bisherige Daten des Geräts übernehmen ---------- */
-  async function umzugVorbereiten() {
-    const echte = Object.values((typeof local !== "undefined" && local.data && local.data.kunden) || {}).filter(k => !k.beispiel);
-    if (!echte.length) return false;
-    const j = await sicherungDaten(); j.kunden = j.kunden.filter(k => !k.beispiel);
-    await idbAuf(); await extraPut("umzug", JSON.stringify(j)); return true;
-  }
-  async function umzugPruefen() {
-    const t = await extraGet("umzug"); if (!t) return;
-    const warte = () => new Promise(r => { const i = setInterval(() => { if (S.mode === "cloud" && S.loading === false) { clearInterval(i); r(); } }, 200); setTimeout(() => { clearInterval(i); r(); }, 15000); });
-    await warte();
-    try { const j = JSON.parse(t); await sicherungUebernehmen(j); await extraPut("umzug", null); hinweis(j.kunden.length + " Kunden vom Gerät ins Konto übernommen"); }
-    catch (e) { console.warn(e); hinweis("Übernahme der Gerätedaten fehlgeschlagen – bitte über „Sicherung einlesen“ wiederholen."); }
-  }
-
-  /* ---------- Aktionen ---------- */
-  async function nachAnmeldung() {
-    if (S.mode === "lokal") { try { await umzugVorbereiten(); } catch (e) { console.warn(e); } }
-    location.reload();
-  }
-  async function anmelden(email, pw) { setz(await auth("token?grant_type=password", { email, password: pw })); await nachAnmeldung(); }
-  async function registrieren(name, email, pw) {
-    const j = await auth("signup", { email, password: pw, data: { name } });
-    if (j.access_token) { setz(j); await nachAnmeldung(); return "ok"; }
-    return "bestaetigen";
-  }
-  const passwortVergessen = email => auth("recover", { email });
-  /** 6-stelliger Code aus der E-Mail (Registrierung bestätigen oder Passwort zurücksetzen) */
-  async function codePruefen(email, code, art) {
-    const typen = art === "recovery" ? ["recovery"] : ["email", "signup"]; let fehler = null;
-    for (const type of typen) { try { const j = await auth("verify", { type, email, token: code }); if (j.access_token) { setz(j); return true; } } catch (e) { fehler = e; } }
-    throw fehler || new Error("Der Code ist ungültig oder abgelaufen.");
-  }
-  async function neuesPasswort(pw) {
-    const r = await fetch(URL_ + "/auth/v1/user", { method: "PUT", headers: { apikey: KEY, Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
-    if (!r.ok) { let j = {}; try { j = await r.json(); } catch (e) { } throw new Error(fehlerText(j, r.status)); }
-  }
-  function codeSheet(email, art) {
-    const msg = h("p", { class: "mut", style: "min-height:18px;margin:10px 0 0" });
-    const [fc, iCode] = feld("ko_code6", "Code aus der E-Mail", "text", "one-time-code");
-    iCode.setAttribute("inputmode", "numeric"); iCode.style.cssText = "font:700 22px ui-monospace,Menlo,monospace;letter-spacing:.3em;text-align:center";
-    const [fp, iPw] = art === "recovery" ? feld("ko_pwneu", "Neues Passwort (mindestens 8 Zeichen)", "password", "new-password") : [null, null];
-    sheet(art === "recovery" ? "Passwort zurücksetzen" : "E-Mail bestätigen", h("div", null,
-      h("p", { class: "sub", style: "margin-top:0" }, "Wir haben eine E-Mail an " + email + " geschickt. Geben Sie den Code daraus ein" + (art === "recovery" ? " und wählen Sie ein neues Passwort." : ".") + " Keine Mail? Bitte auch im Spam-Ordner nachsehen."),
-      fc, fp, msg),
-      [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: art === "recovery" ? "Passwort speichern" : "Bestätigen", fn: async () => {
-        const c = iCode.value.replace(/\s/g, ""); if (c.length < 6) { msg.textContent = "Bitte den Code aus der E-Mail eingeben."; return false; }
-        if (art === "recovery" && iPw.value.length < 8) { msg.textContent = "Das neue Passwort braucht mindestens 8 Zeichen."; return false; }
-        msg.textContent = "Wird geprüft …";
-        try { await codePruefen(email, c, art); if (art === "recovery") await neuesPasswort(iPw.value); msg.textContent = "Fertig – Daten werden geladen …"; await nachAnmeldung(); return false; }
-        catch (e) { msg.textContent = navigator.onLine === false ? "Keine Internetverbindung." : e.message; return false; } } }]);
-    setTimeout(() => iCode.focus(), 50);
-  }
-  async function abmelden(still) {
-    try { if (sess) await auth("logout", {}, true); } catch (e) { }
-    sess = null; schreib(LS, null); schreib(LSZ, null);
-    try { if (idb) idb.close(); indexedDB.deleteDatabase("eeb-cloud"); } catch (e) { }
-    if (!still) location.reload();
-  }
-  async function beitreten(code) {
-    const b = await rpc("bereich_beitreten", { p_code: code });
-    const bm = lies(LSB) || {}; bm[sess.uid] = b; schreib(LSB, bm);
-    location.reload();
-  }
-  async function verlassen() {
-    try { await rest("DELETE", "bereich_zugang?bereich=eq." + bereich + "&user_id=eq." + sess.uid); } catch (e) { }
-    const bm = lies(LSB) || {}; bm[sess.uid] = null; schreib(LSB, bm); location.reload();
-  }
-  async function kontoLoeschen() { await flush(); await rpc("konto_loeschen"); await abmelden(true); location.reload(); }
-
-  /* ---------- Einstellungen → Konto ---------- */
-  function feld(id, label, typ, ac, wert) { const i = h("input", { class: "inp", id, type: typ, autocomplete: ac, value: wert || "" }); return [h("div", { class: "fld" }, h("label", { for: id }, label), i), i]; }
-  function anmeldeSheet(neu) {
-    const msg = h("p", { class: "mut", style: "min-height:18px;margin:10px 0 0" });
-    const [fn, iName] = feld("ko_name", "Ihr Name (sehen Kollegen im Team)", "text", "name");
-    const [fe, iMail] = feld("ko_mail", "E-Mail", "email", "username");
-    const [fp, iPw] = feld("ko_pw", "Passwort" + (neu ? " (mindestens 8 Zeichen)" : ""), "password", neu ? "new-password" : "current-password");
-    const vergessen = neu ? null : h("button", { type: "button", class: "linkbtn", onclick: async () => {
-      if (!/\S+@\S+\.\S+/.test(iMail.value)) { msg.textContent = "Bitte zuerst Ihre E-Mail eintragen."; return; }
-      try { const m = iMail.value.trim(); await passwortVergessen(m); codeSheet(m, "recovery"); } catch (e) { msg.textContent = e.message; } } }, "Passwort vergessen?");
-    const body = h("div", null,
-      h("p", { class: "sub", style: "margin-top:0" }, neu ? "Mit dem Konto liegen Ihre Daten verschlüsselt übertragen auf dem EEBerater-Server in der EU – auf Handy, Tablet und PC gleich und im Team gemeinsam nutzbar." : "Melden Sie sich mit Ihrem EEBerater-Konto an."),
-      neu ? fn : null, fe, fp, vergessen, msg,
-      S.mode === "lokal" ? h("p", { class: "mut", style: "font-size:12.5px" }, "Ihre bisherigen Kunden auf diesem Gerät werden nach der Anmeldung ins Konto übernommen.") : null);
-    sheet(neu ? "Konto erstellen" : "Anmelden", body, [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: neu ? "Konto erstellen" : "Anmelden", fn: async () => {
-      const mail = iMail.value.trim(), pw = iPw.value;
-      if (!/\S+@\S+\.\S+/.test(mail)) { msg.textContent = "Bitte eine gültige E-Mail-Adresse eingeben."; return false; }
-      if (neu && pw.length < 8) { msg.textContent = "Das Passwort braucht mindestens 8 Zeichen."; return false; }
-      if (neu && !iName.value.trim()) { msg.textContent = "Bitte Ihren Namen eingeben."; return false; }
-      msg.textContent = neu ? "Konto wird erstellt …" : "Anmeldung läuft …";
-      try {
-        if (neu) { const r = await registrieren(iName.value.trim(), mail, pw); if (r === "bestaetigen") { codeSheet(mail, "signup"); return; } }
-        else { try { await anmelden(mail, pw); } catch (e) { if (/bestätigen Sie zuerst/.test(e.message)) { try { await auth("resend", { type: "signup", email: mail }); } catch (e2) { } codeSheet(mail, "signup"); return; } throw e; } }
-        msg.textContent = "Angemeldet – Daten werden geladen …"; return false;
-      } catch (e) { msg.textContent = navigator.onLine === false ? "Keine Internetverbindung." : e.message; return false; }
-    } }]);
-    setTimeout(() => (neu ? iName : iMail).focus(), 50);
-  }
-  function beitretenSheet() {
-    const inp = h("input", { class: "inp", id: "ko_code", placeholder: "XXXX-XXXX", autocomplete: "off", style: "font:700 20px ui-monospace,Menlo,monospace;letter-spacing:.1em;text-align:center;text-transform:uppercase" });
-    const msg = h("p", { class: "mut", style: "min-height:18px" });
-    sheet("Büro beitreten", h("div", null, h("p", { class: "sub", style: "margin-top:0" }, "Geben Sie den Einladungscode ein, den Sie vom Inhaber des Büros bekommen haben. Danach arbeiten Sie mit den gemeinsamen Kunden des Büros – mit den Rechten, die der Inhaber festlegt."),
-      h("div", { class: "fld" }, h("label", { for: "ko_code" }, "Einladungscode"), inp), msg),
-      [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: "Beitreten", fn: async () => {
-        const c = inp.value.toUpperCase().replace(/\s+/g, ""); if (c.length < 8) { msg.textContent = "Bitte den vollständigen Code eingeben."; return false; }
-        msg.textContent = "Wird geprüft …";
-        try { await flush(); await beitreten(c); return false; } catch (e) { msg.textContent = navigator.onLine === false ? "Keine Internetverbindung." : e.message; return false; } } }]);
-    setTimeout(() => inp.focus(), 50);
-  }
-  function karte() {
-    const sec = (...k) => h("section", { class: "card fsec" }, h("h4", null, "Konto"), ...k);
-    if (!sess) return sec(
-      h("p", { class: "sub" }, "Mit einem EEBerater-Konto liegen Ihre Kunden, Fotos und Dateien sicher auf dem Server in der EU: auf Handy, Tablet und PC gleich, ohne Netz weiter nutzbar und im Tarif Büro gemeinsam mit Ihren Mitarbeitern."),
-      h("div", { class: "btnrow", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => anmeldeSheet(false) }, ic("lock"), "Anmelden"), h("button", { class: "btn sec", onclick: () => anmeldeSheet(true) }, ic("plus"), "Konto erstellen")));
-    const imBuero = bereich && bereich !== sess.uid;
-    const st = h("p", { class: "mut", style: "font-size:13px;margin:6px 0 0" });
-    const zeig = () => { st.textContent = (status.fehler === "offline" || navigator.onLine === false ? "Offline – Änderungen werden übertragen, sobald wieder Internet da ist. " : status.fehler ? "Abgleich gestört: " + status.fehler + ". " : "") + (status.offen ? status.offen + " Änderung(en) noch nicht übertragen. " : "Alles übertragen. ") + (status.zuletzt ? "Zuletzt abgeglichen " + status.zuletzt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + " Uhr." : ""); };
-    zeig(); const iv = setInterval(() => { if (!document.body.contains(st)) clearInterval(iv); else zeig(); }, 2000);
-    return sec(
-      h("div", { class: "kv", style: "padding:6px 0" }, h("span", null, "Angemeldet als"), h("b", null, (sess.name ? sess.name + " · " : "") + (sess.email || "")),
-        h("span", null, "Bereich"), h("b", null, imBuero ? "Büro-Team (Mitarbeiter)" : "Eigenes Büro")),
-      st,
-      h("div", { class: "btnrow", style: "margin-top:10px;flex-wrap:wrap" },
-        h("button", { class: "btn sec", onclick: async () => { st.textContent = "Wird abgeglichen …"; await abgleichen(); zeig(); toast("Abgleich fertig"); } }, ic("upload"), "Jetzt abgleichen"),
-        imBuero ? h("button", { class: "btn sec", onclick: () => ask("Büro verlassen?", "Sie arbeiten danach wieder in Ihrem eigenen Bereich. Die Kunden des Büros bleiben beim Büro.", "Verlassen", verlassen, true) }, "Büro verlassen")
-          : h("button", { class: "btn sec", onclick: beitretenSheet }, ic("plus"), "Büro beitreten"),
-        h("button", { class: "btn sec", onclick: () => ask("Abmelden?", status.offen ? "Achtung: " + status.offen + " Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Bitte erst mit Internet abgleichen." : "Ihre Daten bleiben im Konto. Auf diesem Gerät werden sie entfernt, bis Sie sich wieder anmelden.", "Abmelden", () => abmelden(), true) }, "Abmelden")),
-      h("button", { type: "button", class: "linkbtn", style: "color:var(--r);margin-top:8px", onclick: () => ask("Konto endgültig löschen?", imBuero ? "Ihr Konto wird gelöscht. Die Kunden des Büros bleiben beim Büro." : "Ihr Konto und alle Daten in Ihrem Bereich (Kunden, Fotos, Dateien, Belege) werden endgültig vom Server gelöscht. Erstellen Sie vorher eine Sicherung, wenn Sie die Daten behalten möchten.", "Endgültig löschen", async () => { try { await kontoLoeschen(); } catch (e) { toast("Löschen fehlgeschlagen: " + e.message); } }, true) }, "Konto löschen"));
-  }
-  return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess };
-})();
-
-</script>
+<script src="konto.js"></script>
 <script>
 "use strict";
 /* ============ Hilfen ============ */
@@ -5505,9 +5142,10 @@ function tourHinweis() {
 
 </script>
 <script>
-/* ============ Abo (App Store / Google Play) ============
-   Web-Version und Testversion: alles frei. In der Store-App wird das Abo über
-   cordova-plugin-purchase (CdvPurchase) abgefragt. Je Tarif ein Jahresabo (12 Monate Laufzeit, jährliche Zahlung). */
+/* ============ Abo (App Store / Google Play / PayPal / Beta-Code) ============
+   claude.ai-Testversion: alles frei. Store-App: Abo über cordova-plugin-purchase (CdvPurchase).
+   Web-Version mit Konto: Abo über PayPal oder Beta-Code, freigeschaltet vom EEBerater-Server.
+   Ein Abo vom Server (PayPal, Beta, Büro-Team, Freischaltung) gilt auch in der Store-App. */
 const ABO_TARIFE = {
   start: { n: "Start", j: 490, fuer: "Für Einzelberater",
     inc: ["Kunden, Kundenakte, Fristen und Termine", "BAFA- und KfW-Vollmachten im Original", "Aufnahmen, Abnahmen, Checklisten mit Fotos", "Heizlast und alle Rechner", "Angebote, Rechnungen, Mahnungen, Kurz-BWA"] },
@@ -5518,22 +5156,33 @@ const ABO_TARIFE = {
 };
 const ABO_ID = t => "de.energieeffizientesbauen.eeberater." + t + ".jahr";
 const ABO_RANG = { start: 1, pro: 2, buero: 3 };
-const ABO = { bereit: false, tarif: null, periode: null, store: null, platform: null, fehler: "" };
-/** Ohne Store-Plugin (Web, Testversion, iPad-Playgrounds) ist alles freigeschaltet */
-function aboAktiv() { return !!(NATIV && window.CdvPurchase && ABO.store); }
-function aboStufe() { return aboAktiv() ? ABO.tarif : "test"; }
+const ABO = { bereit: false, tarif: null, periode: null, store: null, platform: null, fehler: "", server: null, serverBereit: false };
+const WEB_ABO = !NATIV && !!window.EEB_CLOUD;
+/** Store-Abo verfügbar (nur in der App aus dem Store) */
+function storeAktiv() { return !!(NATIV && window.CdvPurchase && ABO.store); }
+/** Abo-Pflicht: Store-App oder Web-Version mit eigenem Server. Ohne beides (claude.ai, iPad-Playgrounds) ist alles frei. */
+function aboAktiv() { return storeAktiv() || WEB_ABO; }
+function serverTarif() { const a = ABO.server; if (!a || !a.tarif) return null; if (a.bis && new Date(a.bis) < new Date()) return null; return a.tarif; }
+function aboStufe() {
+  if (!aboAktiv()) return "test";
+  const s = serverTarif(), st = ABO.tarif;
+  if (s && st) return ABO_RANG[s] >= ABO_RANG[st] ? s : st;
+  return s || st || null;
+}
 function hatTarif(t) { const s = aboStufe(); return s === "test" || (!!s && ABO_RANG[s] >= ABO_RANG[t]); }
-function aboPreis(t) { if (aboAktiv()) { const pr = ABO.store.get(ABO_ID(t), ABO.platform); const o = pr && pr.getOffer && pr.getOffer();
+function aboPreis(t) { if (storeAktiv()) { const pr = ABO.store.get(ABO_ID(t), ABO.platform); const o = pr && pr.getOffer && pr.getOffer();
     const ph = o && o.pricingPhases && o.pricingPhases[o.pricingPhases.length - 1]; if (ph && ph.price) return ph.price; }
   return ABO_TARIFE[t].j.toLocaleString("de-DE") + " €"; }
 const aboMonat = t => Math.round(ABO_TARIFE[t].j / 12) + " €";
+const aboDatum = d => d ? new Date(d).toLocaleDateString("de-DE") : "";
+function aboNeu() { document.querySelectorAll(".abo-sperre").forEach(x => x.remove()); try { render(); } catch (e) { } if (!aboStufe()) aboSperre(); }
 function aboAuswerten() {
   if (!ABO.store) return; let best = null, per = null;
   for (const t of Object.keys(ABO_TARIFE)) { const pr = ABO.store.get(ABO_ID(t), ABO.platform);
     if (pr && pr.owned && (!best || ABO_RANG[t] > ABO_RANG[best])) { best = t; per = "j"; } }
   const vorher = ABO.tarif; ABO.tarif = best; ABO.periode = per;
   if (S.profil) { S.profil.abo = best ? { tarif: best, periode: per, stand: heute() } : null; }
-  if (vorher !== best) { document.querySelectorAll(".abo-sperre").forEach(x => x.remove()); render(); if (!best) aboSperre(); }
+  if (vorher !== best) aboNeu();
 }
 async function aboInit() {
   if (!NATIV) return;
@@ -5545,40 +5194,107 @@ async function aboInit() {
     store.when().approved(tr => tr.verify()).verified(r => r.finish()).finished(aboAuswerten).receiptUpdated(aboAuswerten).productUpdated(aboAuswerten);
     store.error(e => { ABO.fehler = e && e.message || "Fehler beim Store"; });
     try { await store.initialize([ABO.platform]); } catch (e) { ABO.fehler = String(e); }
-    ABO.bereit = true; aboAuswerten(); if (!ABO.tarif) aboSperre();
+    ABO.bereit = true; aboAuswerten(); if (!aboStufe()) aboSperre();
   };
   if (window.CdvPurchase) los(); else document.addEventListener("deviceready", los, { once: true });
 }
+/** Abo vom EEBerater-Server (PayPal, Beta-Code, Büro-Team, Freischaltung) */
+async function aboServerLaden(pruefen) {
+  const C = window.EEB_CLOUD; if (!C) { ABO.serverBereit = true; return; }
+  if (!ABO.server) ABO.server = C.aboCache();
+  if (C.angemeldet()) { try { ABO.server = await C.abo(pruefen); } catch (e) { console.warn(e); } }
+  ABO.serverBereit = true; aboNeu();
+}
+function paypalSdk(cid) {
+  if (window.paypal && window.paypal.Buttons) return Promise.resolve();
+  return new Promise((ok, err) => { const s = document.createElement("script");
+    s.src = "https://www.paypal.com/sdk/js?client-id=" + encodeURIComponent(cid) + "&vault=true&intent=subscription&currency=EUR&locale=de_DE";
+    s.onload = ok; s.onerror = err; document.head.append(s); });
+}
+async function paypalKaufen(t) {
+  const C = window.EEB_CLOUD;
+  if (!C.angemeldet()) { toast("Bitte zuerst ein Konto erstellen oder anmelden."); C.anmeldeSheet(true); return; }
+  let cfg; try { cfg = await C.config(); } catch (e) { toast("Keine Verbindung zum Server."); return; }
+  const plan = cfg["plan_" + t], cid = cfg.paypal_client;
+  if (!plan || !cid) { toast("Die Bezahlung mit PayPal wird gerade eingerichtet. Bitte später erneut versuchen."); return; }
+  const d = ABO_TARIFE[t], brutto = (d.j * 1.19).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const box = h("div", { style: "min-height:160px;margin-top:10px" }), msg = h("p", { class: "mut", style: "min-height:18px" });
+  const zu = sheet("Tarif " + d.n + " mit PayPal", h("div", null,
+    h("p", { class: "sub", style: "margin-top:0" }, "Jahresabo " + d.j.toLocaleString("de-DE") + " € zzgl. 19 % USt. = " + brutto + " € im Jahr. Die ersten 30 Tage sind kostenlos – wer vorher im PayPal-Konto kündigt, zahlt nichts. Laufzeit 12 Monate, danach verlängert sich das Abo jeweils um 12 Monate."),
+    box, msg), [{ t: "Schließen", cls: "sec", fn: () => { } }]);
+  msg.textContent = "PayPal wird geladen …";
+  try { await paypalSdk(cid); } catch (e) { msg.textContent = "PayPal konnte nicht geladen werden. Bitte Internetverbindung prüfen."; return; }
+  msg.textContent = "";
+  window.paypal.Buttons({
+    style: { layout: "vertical", label: "subscribe", shape: "rect" },
+    createSubscription: (data, actions) => actions.subscription.create({ plan_id: plan, custom_id: C.uid(),
+      application_context: { brand_name: "EEBerater", shipping_preference: "NO_SHIPPING", locale: "de-DE", user_action: "SUBSCRIBE_NOW" } }),
+    onApprove: async data => {
+      msg.textContent = "Abo wird freigeschaltet …";
+      try { ABO.server = await C.paypalAktivieren(data.subscriptionID); zu(); aboNeu(); toast("Danke! Tarif " + d.n + " ist freigeschaltet."); }
+      catch (e) { msg.textContent = e.message + " (PayPal-Abo-Nummer " + data.subscriptionID + " – bitte an info@energie-effizientesbauen.de senden)"; }
+    },
+    onError: e => { msg.textContent = "PayPal-Fehler: " + ((e && e.message) || e); }
+  }).render(box).catch(e => { msg.textContent = "PayPal-Fehler: " + ((e && e.message) || e); });
+}
+function betaSheet() {
+  const C = window.EEB_CLOUD; if (!C) return;
+  if (!C.angemeldet()) { toast("Bitte zuerst ein Konto erstellen oder anmelden."); C.anmeldeSheet(true); return; }
+  const inp = h("input", { class: "inp", id: "beta_code", placeholder: "BETA-XXXX-XXXX", autocomplete: "off", style: "font:700 19px ui-monospace,Menlo,monospace;letter-spacing:.08em;text-align:center;text-transform:uppercase" });
+  const msg = h("p", { class: "mut", style: "min-height:18px" });
+  sheet("Beta-Code einlösen", h("div", null,
+    h("p", { class: "sub", style: "margin-top:0" }, "Mit einem Beta-Code nutzen Sie den EEBerater 40 Tage lang mit allen Funktionen (Tarif Büro) – ohne Zahlungsdaten. Danach wählen Sie einen Tarif."),
+    h("div", { class: "fld" }, h("label", { for: "beta_code" }, "Beta-Code"), inp), msg),
+    [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: "Einlösen", fn: async () => {
+      const c = inp.value.toUpperCase().replace(/\s+/g, ""); if (c.length < 10) { msg.textContent = "Bitte den vollständigen Code eingeben."; return false; }
+      msg.textContent = "Wird geprüft …";
+      try { ABO.server = await C.betaEinloesen(c); aboNeu(); toast("Beta-Zugang aktiv bis " + aboDatum(ABO.server && ABO.server.bis)); }
+      catch (e) { msg.textContent = navigator.onLine === false ? "Keine Internetverbindung." : e.message; return false; } } }]);
+  setTimeout(() => inp.focus(), 50);
+}
 async function aboKaufen(t) {
   if (!aboAktiv()) { toast("In der Testversion ist alles freigeschaltet."); return; }
+  if (!storeAktiv()) return paypalKaufen(t);
   const pr = ABO.store.get(ABO_ID(t), ABO.platform); const o = pr && pr.getOffer();
   if (!o) { toast("Tarif ist im Store noch nicht verfügbar. Bitte später erneut versuchen."); return; }
   const err = await o.order(); if (err && err.code !== window.CdvPurchase.ErrorCode.PAYMENT_CANCELLED) toast("Kauf nicht abgeschlossen: " + (err.message || ""));
 }
-async function aboWiederherstellen() { if (!aboAktiv()) { toast("In der Testversion ist alles freigeschaltet."); return; }
-  await ABO.store.restorePurchases(); aboAuswerten(); toast(ABO.tarif ? "Abo „" + ABO_TARIFE[ABO.tarif].n + "“ wiederhergestellt" : "Kein aktives Abo gefunden"); }
-function aboVerwalten() { if (aboAktiv()) ABO.store.manageSubscriptions(); else toast("In der Testversion gibt es kein Abo zu verwalten."); }
+async function aboWiederherstellen() {
+  if (!aboAktiv()) { toast("In der Testversion ist alles freigeschaltet."); return; }
+  if (storeAktiv()) { await ABO.store.restorePurchases(); aboAuswerten(); }
+  await aboServerLaden(true);
+  const s = aboStufe(); toast(s ? "Tarif „" + ABO_TARIFE[s].n + "“ ist aktiv" : "Kein aktives Abo gefunden");
+}
+function aboVerwalten() {
+  const a = ABO.server;
+  if (a && a.paypal && serverTarif()) { window.open("https://www.paypal.com/myaccount/autopay/", "_blank", "noopener"); return; }
+  if (storeAktiv() && ABO.tarif) { ABO.store.manageSubscriptions(); return; }
+  toast(a && a.quelle === "beta" ? "Der Beta-Zugang endet automatisch – es gibt nichts zu kündigen." : a && a.quelle === "team" ? "Das Abo verwaltet der Inhaber Ihres Büros." : "Es gibt kein Abo zu verwalten.");
+}
 function aboRechtLinks() {
+  const store = storeAktiv();
   return h("p", { class: "mut", style: "font-size:12px;margin:10px 0 0;line-height:1.45" },
-    "Das Abo verlängert sich automatisch, wenn es nicht mindestens 24 Stunden vor Ablauf in den Einstellungen des ",
-    ABO.platform === "android-playstore" ? "Google-Play-Kontos" : "App-Store-Kontos", " gekündigt wird. Laufzeit 12 Monate, Zahlung jährlich über den Store; die Kündigung wirkt zum Ende der Laufzeit. Es gelten die AGB und die Datenschutzerklärung unter Einstellungen → Rechtliches sowie unter energie-effizientesbauen.de/eeberater.");
+    store ? "Das Abo verlängert sich automatisch, wenn es nicht mindestens 24 Stunden vor Ablauf in den Einstellungen des " + (ABO.platform === "android-playstore" ? "Google-Play-Kontos" : "App-Store-Kontos") + " gekündigt wird. Laufzeit 12 Monate, Zahlung jährlich über den Store; die Kündigung wirkt zum Ende der Laufzeit."
+      : "Bezahlung über PayPal. Das Abo verlängert sich jeweils um 12 Monate, wenn es nicht vor Ablauf im PayPal-Konto (Einstellungen → Automatische Zahlungen) gekündigt wird; die Kündigung wirkt zum Ende der Laufzeit. Die Rechnung mit ausgewiesener USt. erhalten Sie per E-Mail.",
+    " Es gelten die AGB und die Datenschutzerklärung unter Einstellungen → Rechtliches sowie unter energie-effizientesbauen.de/eeberater.");
 }
 /** Tarifauswahl (auch als Sperrbildschirm ohne Abo) */
 function aboTarifeView(sperre) {
-  const box = h("div");
+  const box = h("div"), C = window.EEB_CLOUD;
   const draw = () => rc(box,
-    h("p", { class: "mut", style: "margin:2px 0 12px;font-size:13.5px" }, "Jahresabo mit 12 Monaten Laufzeit – 2 Monate geschenkt gegenüber dem Monatspreis. " + (aboAktiv() ? "Preise inkl. USt., bezahlt über den Store." : "Alle Preise zzgl. USt.")),
+    h("p", { class: "mut", style: "margin:2px 0 12px;font-size:13.5px" }, "Jahresabo mit 12 Monaten Laufzeit – 2 Monate geschenkt gegenüber dem Monatspreis. " + (storeAktiv() ? "Preise inkl. USt., bezahlt über den Store." : WEB_ABO ? "Alle Preise zzgl. USt., bezahlt mit PayPal." : "Alle Preise zzgl. USt.")),
     ...Object.entries(ABO_TARIFE).map(([t, d]) => h("div", { class: "abot" + (t === "pro" ? " empf" : "") + (aboStufe() === t ? " akt" : "") },
       t === "pro" ? h("span", { class: "abob" }, "Empfohlen") : null,
       h("div", { class: "abok" }, h("b", null, d.n), h("span", null, d.fuer)),
-      aboAktiv() ? h("div", { class: "abop" }, h("b", null, aboPreis(t)), h("span", null, "im Jahr")) : h("div", { class: "abop" }, h("b", null, aboMonat(t)), h("span", null, "im Monat · " + aboPreis(t) + " im Jahr")),
+      storeAktiv() ? h("div", { class: "abop" }, h("b", null, aboPreis(t)), h("span", null, "im Jahr")) : h("div", { class: "abop" }, h("b", null, aboMonat(t)), h("span", null, "im Monat · " + aboPreis(t) + " im Jahr")),
       t === "pro" && d.gr ? h("p", { class: "abogr" }, "Gründerpreis für die ersten 50 Berater: " + d.gr.toLocaleString("de-DE") + " € im Jahr (per Gutscheincode).") : null,
       h("ul", null, d.inc.map(x => h("li", null, x))),
       aboStufe() === t ? h("div", { class: "chip ok", style: "margin-top:8px" }, "Dein aktueller Tarif") :
         h("button", { type: "button", class: "btn" + (t === "pro" ? "" : " sec") + " wide", style: "margin-top:8px", onclick: () => aboKaufen(t) }, sperre ? "30 Tage kostenlos testen" : "Diesen Tarif wählen"))),
     h("div", { class: "btnrow", style: "flex-wrap:wrap;margin-top:6px" },
-      h("button", { type: "button", class: "btn sec", onclick: aboWiederherstellen }, ic("download"), "Käufe wiederherstellen"),
-      ABO.platform !== "android-playstore" && aboAktiv() && ABO.store.redeem ? h("button", { type: "button", class: "btn sec", onclick: () => ABO.store.redeem() }, ic("check"), "Gutscheincode einlösen") : null,
+      C ? h("button", { type: "button", class: "btn sec", onclick: betaSheet }, ic("check"), "Beta-Code einlösen") : null,
+      h("button", { type: "button", class: "btn sec", onclick: aboWiederherstellen }, ic("download"), storeAktiv() ? "Käufe wiederherstellen" : "Abo neu prüfen"),
+      storeAktiv() && ABO.platform !== "android-playstore" && ABO.store.redeem ? h("button", { type: "button", class: "btn sec", onclick: () => ABO.store.redeem() }, ic("check"), "Gutscheincode einlösen") : null,
       sperre ? h("button", { type: "button", class: "btn sec", onclick: sicherungErstellen }, ic("download"), "Datensicherung erstellen") : null),
     aboRechtLinks());
   draw(); return box;
@@ -5589,27 +5305,40 @@ function aboSheet(grund) {
     aboTarifeView(false)));
 }
 function aboSperre() {
-  if (!aboAktiv() || ABO.tarif || document.querySelector(".abo-sperre")) return;
+  if (!aboAktiv() || aboStufe() || document.querySelector(".abo-sperre")) return;
+  if (window.EEB_CLOUD && !ABO.serverBereit) return;      // erst die Antwort vom Server abwarten
+  if (NATIV && !ABO.bereit && !WEB_ABO) return;
+  const C = window.EEB_CLOUD, ohneKonto = C && !C.angemeldet(), a = ABO.server;
   const el = h("div", { class: "abo-sperre", role: "dialog", "aria-modal": "true", "aria-label": "Tarif wählen" },
     h("div", { class: "abo-in" },
       h("div", { style: "display:flex;align-items:center;gap:10px;margin-bottom:6px" }, logo()),
-      h("h2", { style: "margin:4px 0 4px" }, "Willkommen beim EEBerater"),
-      h("p", { class: "mut", style: "margin:0 0 12px" }, "Wähle deinen Tarif. Die ersten 30 Tage sind kostenlos – wer im Testzeitraum im Store kündigt, zahlt nichts. Deine bisherigen Daten bleiben auf dem Gerät erhalten."),
-      aboTarifeView(true)));
+      h("h2", { style: "margin:4px 0 4px" }, a && a.abgelaufen ? "Ihr Zugang ist abgelaufen" : "Willkommen beim EEBerater"),
+      ohneKonto && WEB_ABO ? h("div", null,
+        h("p", { class: "mut", style: "margin:0 0 12px" }, "Bitte melden Sie sich mit Ihrem EEBerater-Konto an oder erstellen Sie ein neues Konto. Danach wählen Sie Ihren Tarif (30 Tage kostenlos) oder lösen einen Beta-Code ein."),
+        h("div", { class: "btnrow", style: "margin-bottom:16px" }, h("button", { class: "btn", onclick: () => C.anmeldeSheet(false) }, ic("lock"), "Anmelden"), h("button", { class: "btn sec", onclick: () => C.anmeldeSheet(true) }, ic("plus"), "Konto erstellen")))
+      : h("p", { class: "mut", style: "margin:0 0 12px" }, a && a.abgelaufen ? (a.quelle === "beta" ? "Der Beta-Zeitraum ist beendet. Danke fürs Testen! " : "") + "Wählen Sie einen Tarif, um weiterzuarbeiten. Ihre Daten bleiben im Konto erhalten."
+        : "Wähle deinen Tarif. Die ersten 30 Tage sind kostenlos – wer im Testzeitraum kündigt, zahlt nichts. Deine bisherigen Daten bleiben erhalten."),
+      ohneKonto && WEB_ABO ? null : aboTarifeView(true)));
   document.body.append(el);
 }
 /** Funktion nur mit Pro (oder Büro) ausführen */
 function proNoetig(name, fn) { if (hatTarif("pro")) return fn(); aboSheet(name); }
 function aboKarte() {
-  const s = aboStufe();
+  const s = aboStufe(), a = ABO.server, st = serverTarif(), C = window.EEB_CLOUD;
+  const text = s === "test" ? "Testversion: Alle Funktionen sind freigeschaltet. In der App aus dem App Store bzw. Google Play oder in der Web-Version mit Konto wählst du hier deinen Tarif."
+    : st && a.quelle === "beta" ? "Tarif " + ABO_TARIFE[st].n + " – Beta-Zugang bis " + aboDatum(a.bis) + ". Danach wählen Sie hier einen Tarif."
+    : st && a.quelle === "frei" ? "Tarif " + ABO_TARIFE[st].n + " – dauerhaft freigeschaltet."
+    : st && a.quelle === "team" ? "Tarif Büro über das Abo Ihres Büros."
+    : st && a.quelle === "paypal" ? "Tarif " + ABO_TARIFE[st].n + " (Jahresabo über PayPal)" + (a.status === "gekuendigt" ? " – gekündigt, nutzbar bis " + aboDatum(a.bis) + "." : ". Verwaltet und gekündigt wird das Abo im PayPal-Konto.")
+    : s ? "Tarif " + ABO_TARIFE[s].n + " (Jahresabo). Verwaltet und gekündigt wird das Abo im " + (ABO.platform === "android-playstore" ? "Google-Play-Konto." : "App-Store-Konto.")
+    : "Kein aktives Abo.";
   return h("section", { class: "card fsec" }, h("h4", null, "Mein Abo"),
-    h("p", { class: "sub" }, s === "test" ? "Testversion: Alle Funktionen sind freigeschaltet. In der App aus dem App Store bzw. Google Play wählst du hier deinen Tarif."
-      : s ? "Tarif " + ABO_TARIFE[s].n + " (Jahresabo). Verwaltet und gekündigt wird das Abo im " + (ABO.platform === "android-playstore" ? "Google-Play-Konto." : "App-Store-Konto.")
-      : "Kein aktives Abo."),
+    h("p", { class: "sub" }, text),
     h("div", { class: "btnrow", style: "flex-wrap:wrap" },
       h("button", { type: "button", class: "btn", onclick: () => aboSheet() }, ic("list"), s && s !== "test" ? "Tarif wechseln" : "Tarife ansehen"),
-      s !== "test" ? h("button", { type: "button", class: "btn sec", onclick: aboVerwalten }, ic("info"), "Abo verwalten") : null,
-      s !== "test" ? h("button", { type: "button", class: "btn sec", onclick: aboWiederherstellen }, ic("download"), "Käufe wiederherstellen") : null));
+      s !== "test" && C ? h("button", { type: "button", class: "btn sec", onclick: betaSheet }, ic("check"), "Beta-Code einlösen") : null,
+      s !== "test" && ((a && a.paypal) || (storeAktiv() && ABO.tarif)) ? h("button", { type: "button", class: "btn sec", onclick: aboVerwalten }, ic("info"), "Abo verwalten") : null,
+      s !== "test" ? h("button", { type: "button", class: "btn sec", onclick: aboWiederherstellen }, ic("download"), storeAktiv() ? "Käufe wiederherstellen" : "Abo neu prüfen") : null));
 }
 /* Pro-Funktionen absichern */
 (function () {
@@ -5618,6 +5347,7 @@ function aboKarte() {
   w("kiSheet", "KI-Assistent"); w("smEinladenSheet", "Kunde einladen"); w("smSendenSheet", "Daten an die Sanierungsmappe senden"); w("smEmpfangen", "Datenpaket aus der Sanierungsmappe einlesen");
 })();
 aboInit();
+aboServerLaden();
 
 </script>
 <script>
