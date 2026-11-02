@@ -158,6 +158,15 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .note{font-size:12.5px;color:var(--ink2);margin-top:10px}
 .ampel{display:flex;gap:10px;align-items:center;padding:12px;border-radius:12px;margin-top:6px;font-weight:600}
 .ampel i{width:14px;height:14px;border-radius:50%;flex:none}
+.chk{display:grid;gap:6px;margin-top:10px}.chki{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:#F6FBF5}
+.chki>i{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:700;color:#fff;font-size:13px}
+.chki.g>i{background:#178038}.chki.r>i{background:#C0392B}.chki.y>i{background:#D98A0B}.chki.r{background:#FBEDEB}.chki.y{background:#FDF6E7}
+.chki span{display:flex;flex-direction:column;gap:1px}.chki small{color:var(--mut,#5A6E60)}
+.chbox{margin-top:14px;display:grid;gap:7px}.chbars{display:grid;gap:6px}.chrow{display:grid;grid-template-columns:minmax(90px,34%) 1fr 42px;gap:8px;align-items:center;font-size:13px}
+.chtrack{position:relative;height:14px;background:#EEF2EE;border-radius:4px}.chtrack i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.chtrack u{position:absolute;top:-3px;bottom:-3px;width:2px;background:#C0392B;text-decoration:none}.chrow em{font-style:normal;font-weight:700;text-align:right}
+.chstack{display:flex;height:18px;border-radius:5px;overflow:hidden;background:#EEF2EE}.chstack i{height:100%}
+.chleg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut,#5A6E60)}.chleg span{display:inline-flex;align-items:center;gap:5px}.chleg i{display:inline-block;width:10px;height:10px;border-radius:2px}
 .ampel.g{background:#E2F5E0;color:#14682D}.ampel.g i{background:var(--g2)}
 .ampel.y{background:#FFF4CF;color:#7A5A00}.ampel.y i{background:var(--o2)}
 .ampel.r{background:#FDE3DF;color:#A3271A}.ampel.r i{background:var(--r)}
@@ -1583,6 +1592,7 @@ const TYPEN = {
   foerder: { name: "Förderrechner Wohngebäude", kurz: "Förderung WG", icon: "euro", farbe: "#178038", calc: 1 },
   nwg: { name: "Förderrechner Nichtwohngebäude", kurz: "Förderung NWG", icon: "building", farbe: "#3A6EA5", calc: 1 },
   wp: { name: "Wärmepumpen-Check", kurz: "WP-Check", icon: "hp", farbe: "#FAAB1F", calc: 1 },
+  wpj: { name: "WP-Förderung: JAZ- und COP-Nachweis", kurz: "WP-JAZ", icon: "hp", farbe: "#E07B00", calc: 1 },
   kosten: { name: "Sanierungskosten", kurz: "Kosten", icon: "layers", farbe: "#8C6D3F", calc: 1 },
   uwert: { name: "U-Wert-Rechner", kurz: "U-Wert", icon: "schicht", farbe: "#2E6F9E", calc: 1 },
   lk: { name: "Lüftungskonzept nach DIN 1946-6", kurz: "Lüftungskonzept", icon: "wind", farbe: "#3F8FB5", calc: 1 },
@@ -1945,6 +1955,31 @@ const CALC = {
           ["Stromverbrauch Wärmepumpe", nf(strom) + " kWh/a"], ["Kosten Wärmepumpe pro Jahr", eur(kWP), "b"], ["Kosten bisher pro Jahr", eur(kAlt), "b"], ["Differenz pro Jahr", eur(kAlt - kWP), "b"]],
         notes: rec.concat(["Überschlägige Abschätzung aus dem Verbrauch, ersetzt keine Heizlastberechnung."]) };
     } },
+  wpj: {
+    init: k => ({ datum: heute(), we: k && k.we || "1", nutzung: k && ["selbst", "vermietet", "weg"].includes(k.nutzung) ? k.nutzung : "selbst", zve: "", kind: "nein", alt: "gas20", funkt: "ja", wpeu: "ja",
+      art: "Luft-Wasser-Wärmepumpe", artQ: "Luft-Wasser-Wärmepumpe", herst: "", quelle: "luft", kw: "", cop1: "", cop2: "", cop3: "", copS: "", abtau: "ja", regel: "inv", scop: "", etas: "", schall: "", km: "R290 (Propan)", liste: "pruefen",
+      nat: "-12", vl: "55", rl: "45", hgr: "15", betrieb: "mono", hs: "2", ww: "ja", wwAnt: "", wwT: "50", pers: "3", qh: "", kosten: "", preis: "0,28", preisAlt: "0,12", traeger: "gas", abgl: "geplant", imsys: "ja", messW: "", messS: "" }),
+    sec: [
+      { t: "Wärmepumpe (Herstellerdaten)", f: [{ ty: "geraet", k: "geraet" }, F.t("herst", "Hersteller und Modell", { full: 1 }),
+        F.seg("quelle", "Wärmequelle", [["luft", "Luft/Wasser"], ["sole", "Sole/Wasser (Erdwärme)"], ["wasser", "Wasser/Wasser (Grundwasser)"]]), F.n("kw", "Nennwärmeleistung", "kW"),
+        F.n("cop1", "COP bei A-7/W35", "", { show: d => d.quelle === "luft" }), F.n("cop2", "COP bei A2/W35", "", { show: d => d.quelle === "luft" }), F.n("cop3", "COP bei A7/W35", "", { show: d => d.quelle === "luft" }),
+        F.n("copS", "COP bei " + "B0/W35 bzw. W10/W35", "", { show: d => d.quelle !== "luft" }),
+        F.seg("abtau", "Abtauung in den Prüfwerten enthalten", OPT_JN, { show: d => d.quelle === "luft" }), F.seg("regel", "Leistungsregelung", [["inv", "drehzahlgeregelt (Inverter)"], ["fix", "ein/aus (fest)"]]),
+        F.n("scop", "SCOP (EN 14825, mittleres Klima, 35 °C)", ""), F.n("etas", "ETAs Raumheizung 35 °C (Datenblatt)", "%"), F.n("schall", "Schallleistung Außengerät LWA", "dB(A)", { show: d => d.quelle === "luft" }),
+        F.combo("km", "Kältemittel", VG.kaeltemittel), F.seg("liste", "In der Liste förderfähiger Wärmepumpen (BAFA/KfW)", [["ja", "Ja"], ["nein", "Nein"], ["pruefen", "noch prüfen"]])] },
+      { t: "Anlage und Betrieb", f: [F.s("nat", "Norm-Außentemperatur am Standort", [["-10", "−10 °C"], ["-12", "−12 °C"], ["-14", "−14 °C"], ["-16", "−16 °C"]], { re: 1 }),
+        F.n("vl", "Vorlauftemperatur (Auslegung)", "°C"), F.n("rl", "Rücklauftemperatur (Auslegung)", "°C"), F.s("hgr", "Heizgrenztemperatur", [["10", "10 °C (sehr gut gedämmt)"], ["12", "12 °C"], ["15", "15 °C (Bestand)"]]),
+        F.seg("betrieb", "Betriebsweise", [["mono", "monoenergetisch (mit Heizstab)"], ["monoval", "monovalent"]]), F.n("hs", "Anteil Heizstab an der Heizwärme", "%", { show: d => d.betrieb === "mono" }),
+        F.seg("ww", "Warmwasser über die Wärmepumpe", OPT_JN), F.n("pers", "Personen im Haushalt", "", { show: d => d.ww === "ja" }), F.n("wwT", "Speichertemperatur Warmwasser", "°C", { show: d => d.ww === "ja" }),
+        F.n("qh", "Heizwärmebedarf (Nutzwärme)", "kWh/a", { ph: "z. B. Heizlast × Vollbenutzungsstunden" }), F.n("preis", "Strompreis Wärmepumpe", "€/kWh"), F.n("preisAlt", "Preis bisheriger Energieträger", "€/kWh")] },
+      { t: "Förderung KfW 458", f: [F.d("datum", "Antragsdatum", { re: 1 }), F.n("we", "Wohneinheiten", "WE", { re: 1 }),
+        F.s("nutzung", "Antragsteller / Nutzung", [["selbst", "Eigentümer, selbst bewohnt"], ["vermietet", "Vermieter"], ["weg", "Wohnungseigentümergemeinschaft (WEG)"], ["sonst", "Sonstige"]], { re: 1 }),
+        F.s("alt", "Bisherige Heizung", ALT_HEIZ, { re: 1 }), F.seg("funkt", "Alte Heizung funktionstüchtig", OPT_JN, { show: d => KGB_ALT.includes(d.alt) }),
+        F.n("zve", "Zu versteuerndes Haushaltseinkommen", "€", { show: d => d.nutzung === "selbst", ph: "leer = kein Einkommensbonus" }), F.seg("kind", "Kind unter 18 im Haushalt", OPT_JN, { show: d => d.nutzung === "selbst" }),
+        F.seg("wpeu", "Wärmepumpe aus EU-Fertigung", OPT_JN, { show: d => (d.datum || "") >= "2027-01-01" }), F.n("kosten", "Kosten Heizungstausch brutto (förderfähig)", "€"),
+        F.seg("abgl", "Hydraulischer Abgleich", [["ja", "durchgeführt"], ["geplant", "geplant"], ["nein", "nein"]]), F.seg("imsys", "Intelligentes Messsystem bestellt (iMSys)", OPT_JN)] },
+      { t: "Kontrolle im Betrieb (optional)", sub: "Gemessene Jahreswerte aus Wärmemengen- und Stromzähler – ergibt die tatsächliche Jahresarbeitszahl.", f: [F.n("messW", "Erzeugte Wärme (Wärmemengenzähler)", "kWh/a"), F.n("messS", "Stromverbrauch Wärmepumpe", "kWh/a")] }],
+    calc(d) { return wpjCalc(d); } },
   kosten: {
     init: k => { const g = k ? geo(k) : null; return { pos: KATALOG.map(p => ({ ...p, m: g && p.fl && g[p.fl] ? String(Math.round(g[p.fl])) : "", on: false })), nk: "10" }; },
     calc(d) {
@@ -1956,6 +1991,115 @@ const CALC = {
       return { big: eur(mid * (1 + nk)), sub: `Spanne ${eur(min * (1 + nk))} bis ${eur(max * (1 + nk))} brutto`, rows, sum: mid * (1 + nk), notes: ["Richtwerte brutto inkl. Einbau, Stand 2026; regional und je nach Aufwand deutlich abweichend. Preise lassen sich pro Position anpassen."] };
     } }
 };
+/* ===== Wärmepumpen-Förderung: JAZ / COP-Nachweis (Näherung angelehnt an VDI 4650 Blatt 1, 2019) ===== */
+// Gewichtung der Prüfpunkte A-7 / A2 / A7 je Norm-Außentemperatur (Summe 1)
+const WPJ_GEW = { "-10": [.026, .518, .456], "-12": [.04, .53, .43], "-14": [.06, .54, .40], "-16": [.08, .55, .37] };
+const KM_NAT = /R ?290|R ?744|R ?600|R ?717|R ?1270|CO2|Propan|Isobutan|Ammoniak/i;
+/** Grenzwert Schallleistung Außengerät nach Ökodesign-VO (EU) 813/2013, Anhang II Nr. 3 */
+const erpSchall = kw => kw <= 6 ? 65 : kw <= 12 ? 70 : kw <= 30 ? 78 : 88;
+function wpjCalc(d) {
+  if (d.art && d.art !== d.artQ) { d.quelle = /sole|erd/i.test(d.art) ? "sole" : /wasser-wasser/i.test(d.art) ? "wasser" : "luft"; d.artQ = d.art; }
+  const luft = d.quelle === "luft", vl = num(d.vl) || 55, rl = num(d.rl) || vl - 7, hgr = num(d.hgr) || 15;
+  const spr = Math.max(3, Math.min(10, vl - rl)), fD = 1 + .01 * (spr - 5), fR = d.regel === "fix" ? .95 : 1, fP = luft ? 1 : 1.035;
+  const tm = 20 + .6 * (vl - 20) - (15 - hgr) * .3, fT = 1 + .02 * (tm - 35);   // mittlere Vorlauftemperatur der Heizperiode → Korrektur gegenüber W35
+  const c = [num(d.cop1), num(d.cop2) * (d.abtau === "nein" ? .94 : 1), num(d.cop3)], w = WPJ_GEW[d.nat] || WPJ_GEW["-12"];
+  let cop35 = 0, quelleTxt = "";
+  if (luft && c.every(x => x > 0)) { cop35 = 1 / w.reduce((a, wi, i) => a + wi / c[i], 0); quelleTxt = "COP-Prüfpunkte"; }
+  else if (!luft && num(d.copS) > 0) { cop35 = num(d.copS) / fP; quelleTxt = "COP-Prüfpunkt"; }
+  else if (num(d.scop) > 0) { cop35 = num(d.scop) * .92; quelleTxt = "SCOP (Schätzung)"; }
+  if (!cop35) return { big: "–", sub: luft ? "COP-Werte bei A-7, A2 und A7 (W35) oder den SCOP eingeben" : "COP bei B0/W35 bzw. W10/W35 oder den SCOP eingeben", rows: [], notes: ["Die COP-Werte stehen im Datenblatt des Herstellers bzw. in der Liste förderfähiger Wärmepumpen (Prüfung nach DIN EN 14511)."] };
+  const jazH = cop35 * fD * fR / fT;
+  const wwT = num(d.wwT) || 50, jazWW = d.ww === "ja" ? cop35 * fR / (1 + .017 * (wwT + 5 - 35)) : 0;
+  // Wärmemengen
+  const pers = num(d.pers) || 0, qww0 = d.ww === "ja" ? pers * 700 : 0;
+  let qh = num(d.qh), qww = qww0, anteil = 0;
+  if (!qh) { qh = 100; qww = d.ww === "ja" ? 100 * .18 / .82 : 0; } anteil = qww / (qh + qww);
+  const hs = d.betrieb === "mono" ? Math.min(30, num(d.hs)) / 100 : 0;
+  const jaz = (qh + qww) / (qh / jazH + (qww ? qww / jazWW : 0));
+  const jazHS = (qh + qww) / (qh * (1 - hs) / jazH + qh * hs + (qww ? qww / jazWW : 0));
+  const jazOk = jaz >= 3;
+  // Effizienzkennwerte
+  const etas = num(d.etas) || (num(d.scop) ? num(d.scop) / 2.5 * 100 - 3 : 0), etasMin = luft ? 150 : 180;
+  const kw = num(d.kw), lwa = num(d.schall), grenz = kw ? erpSchall(kw) : 0, schallMax = grenz ? grenz - 10 : 0;
+  const nat = KM_NAT.test(d.km || ""), ab2028 = (d.datum || heute()) >= "2028-01-01";
+  // Prüfpunkte der technischen Mindestanforderungen
+  const chk = [];
+  chk.push(["Jahresarbeitszahl mind. 3,0 (VDI 4650 Blatt 1)", jazOk ? "g" : "r", "JAZ " + nf(jaz, 2)]);
+  if (luft) chk.push(["Schall Außengerät mind. 10 dB unter Ökodesign-Grenzwert", !lwa || !kw ? "y" : lwa <= schallMax ? "g" : "r", !kw ? "Leistung fehlt" : !lwa ? "LWA fehlt (Grenze " + schallMax + " dB(A))" : lwa + " dB(A), zulässig höchstens " + schallMax + " dB(A)"]);
+  chk.push(["Kältemittel", nat ? "g" : ab2028 ? "r" : "y", nat ? "natürlich – " + (d.km || "") : (d.km || "–") + " – ab 01.01.2028 nicht mehr förderfähig"]);
+  chk.push(["Gerät in der Liste förderfähiger Wärmepumpen", d.liste === "ja" ? "g" : d.liste === "nein" ? "r" : "y", d.liste === "ja" ? "ja" : d.liste === "nein" ? "nein" : "noch prüfen"]);
+  if (etas) chk.push(["ETAs Raumheizung 35 °C (Orientierung mind. " + etasMin + " %)", etas >= etasMin ? "g" : "y", nf(etas) + " %" + (num(d.etas) ? "" : " (aus SCOP)")]);
+  chk.push(["Intelligentes Messsystem bestellt", d.imsys === "ja" ? "g" : "r", d.imsys === "ja" ? "ja" : "Pflicht für Anträge ab 21.07.2026"]);
+  chk.push(["Hydraulischer Abgleich", d.abgl === "nein" ? "r" : d.abgl === "ja" ? "g" : "y", d.abgl === "ja" ? "durchgeführt" : d.abgl === "geplant" ? "geplant" : "fehlt"]);
+  const rank = { g: 0, y: 1, r: 2 }, worst = chk.reduce((a, x) => rank[x[1]] > rank[a] ? x[1] : a, "g");
+  // Förderung KfW 458
+  const we = Math.max(1, Math.round(num(d.we))), selbst = d.nutzung === "selbst", st = stufe(d.datum), kosten = num(d.kosten), capH = capHeiz(we, d.datum), elig = Math.min(kosten, capH);
+  const neu27 = (d.datum || "") >= "2027-01-01", grund = neu27 ? 15 + (d.wpeu === "ja" ? 15 : 0) : 30;
+  const kgbOk = selbst && KGB_ALT.includes(d.alt) && d.funkt !== "nein", kgb = kgbOk ? st[2] : 0;
+  let zve = num(d.zve); if (d.kind === "ja") zve = Math.max(0, zve - 10000);
+  const eink = selbst && d.zve !== "" ? (zve <= 30000 ? 40 : zve <= 40000 ? 30 : zve <= 50000 ? 10 : 0) : 0, deckel = selbst && d.zve !== "" && zve <= 30000 ? 80 : 70;
+  const proWE = elig / we, kgbE = selbst ? Math.min(kgb, deckel - grund) : 0, einkE = selbst ? Math.min(eink, deckel - grund - kgbE) : 0;
+  const zG = elig * grund / 100, zK = proWE * kgbE / 100, zE = proWE * einkE / 100, z = jazOk && worst !== "r" ? zG + zK + zE : 0, zMoegl = zG + zK + zE;
+  // Betrieb
+  const echt = num(d.qh) > 0, strom = echt ? qh * (1 - hs) / jazH + qh * hs + (qww ? qww / jazWW : 0) : 0, kWP = strom * num(d.preis), kAlt = echt ? (qh + qww) / .9 * num(d.preisAlt) : 0;
+  const mess = num(d.messW) && num(d.messS) ? num(d.messW) / num(d.messS) : 0;
+  const rows = [
+    ["Grundlage", quelleTxt === "COP-Prüfpunkte" ? (luft ? "COP A-7/A2/A7" : "COP-Prüfpunkt") : quelleTxt, "s"],
+    ["Gewichtete Leistungszahl bei W35", nf(cop35, 2), "s"],
+    ["Korrektur Spreizung " + nf(spr) + " K", "× " + nf(fD, 3), "s"],
+    ["Korrektur Vorlauf " + nf(vl) + " °C (Mittel " + nf(tm, 1) + " °C)", "÷ " + nf(fT, 3), "s"],
+    ...(fR < 1 ? [["Abschlag ein/aus-Regelung", "× 0,95", "s"]] : []),
+    ["JAZ Heizbetrieb", nf(jazH, 2)],
+    ...(d.ww === "ja" ? [["JAZ Warmwasser (Speicher " + nf(wwT) + " °C)", nf(jazWW, 2)], ["Anteil Warmwasser am Wärmebedarf", nf(anteil * 100) + " %", "s"]] : []),
+    ["Gesamt-JAZ der Anlage (förderrelevant, ohne Heizstab)", nf(jaz, 2), "b"],
+    ...(hs ? [["JAZ inkl. Heizstab (" + nf(hs * 100) + " %)", nf(jazHS, 2), "s"]] : []),
+    ...(mess ? [["Gemessene JAZ im Betrieb", nf(mess, 2), "b"]] : []),
+    ...(echt ? [["Stromverbrauch Wärmepumpe", nf(strom) + " kWh/a"], ["Stromkosten pro Jahr", eur(kWP)], ["Kosten bisherige Heizung pro Jahr (Nutzungsgrad 0,9)", eur(kAlt)], ["Ersparnis pro Jahr", eur(kAlt - kWP), "b"]] : [])];
+  if (kosten) rows.push(["Förderfähige Kosten (max. " + eur(capH) + ")", eur(elig), "s"], ["Grundförderung " + grund + " %", eur(zG), "s"],
+    ...(selbst ? [["Klimageschwindigkeitsbonus " + kgbE + " %", eur(zK), "s"], ["Einkommensbonus " + einkE + " %", d.zve === "" ? "Einkommen fehlt" : eur(zE), "s"]] : []),
+    ["Zuschuss KfW 458" + (z ? "" : " (Anforderungen nicht erfüllt)"), eur(z ? z : 0), "b"], ["Eigenanteil", eur(kosten - z)]);
+  const notes = [];
+  if (!jazOk) notes.push("Die JAZ liegt unter 3,0: Vorlauftemperatur senken (größere Heizflächen, Heizkörperlüfter), effizienteres Gerät wählen oder Warmwassertemperatur prüfen.");
+  if (vl > 55) notes.push("Vorlauf über 55 °C kostet viel Effizienz – je Kelvin weniger Vorlauf steigt die JAZ um etwa 2 %.");
+  if (luft && lwa && schallMax && lwa > schallMax) notes.push("Das Außengerät ist zu laut für die Förderung: Grenzwert " + grenz + " dB(A) minus 10 dB = höchstens " + schallMax + " dB(A).");
+  if (!nat) notes.push("Ab 01.01.2028 werden nur noch Wärmepumpen mit natürlichem Kältemittel gefördert.");
+  if (d.imsys !== "ja") notes.push("iMSys-Bestellpflicht: Für Anträge ab 21.07.2026 muss ein intelligentes Messsystem (inkl. Steuerungseinrichtung nach § 14a EnWG) spätestens bis zur Inbetriebnahme beauftragt sein.");
+  if (mess && mess < jaz - .3) notes.push("Die gemessene JAZ liegt deutlich unter der Berechnung: Heizkurve, Taktung, Warmwassertemperatur und Heizstab-Laufzeit prüfen.");
+  notes.push("Näherungsverfahren angelehnt an VDI 4650 Blatt 1 (2019). Für den Förderantrag gilt die JAZ-Berechnung des Fachunternehmens (z. B. BWP-JAZ-Rechner) mit den Herstellerdaten.");
+  notes.push("Fördersätze nach " + STAND + ". Alle Angaben ohne Gewähr.");
+  const amp = worst === "g" ? ["g", "Technische Mindestanforderungen erfüllt"] : worst === "y" ? ["y", "Voraussichtlich förderfähig – offene Punkte klären"] : ["r", "Förderung gefährdet – Anforderungen nicht erfüllt"];
+  const charts = [{ t: "Leistungszahlen und Jahresarbeitszahl", ref: [3, "Mindest-JAZ 3,0"], max: Math.max(6, ...c, jazH, jazWW) , items: [
+    ...(luft && c.every(x => x > 0) ? [["COP A-7/W35", c[0]], ["COP A2/W35", c[1]], ["COP A7/W35", c[2]]] : !luft && num(d.copS) ? [["COP " + (d.quelle === "sole" ? "B0" : "W10") + "/W35", num(d.copS)]] : []),
+    ["JAZ Heizen", jazH, "a"], ...(d.ww === "ja" ? [["JAZ Warmwasser", jazWW, "a"]] : []), ["JAZ gesamt", jaz, jazOk ? "g" : "r"], ...(mess ? [["JAZ gemessen", mess, "a"]] : [])] }];
+  if (kosten) charts.push({ t: "Finanzierung Heizungstausch", eur: 1, stack: [["Grundförderung", zG, "g"], ["Klimageschwindigkeitsbonus", z ? zK : 0, "l"], ["Einkommensbonus", z ? zE : 0, "a"], ["Eigenanteil", kosten - (z ? zG + zK + zE : 0), "n"]].filter(x => x[1] > 0) });
+  return { big: "JAZ " + nf(jaz, 2), sub: "Förderrelevante Jahresarbeitszahl (Näherung VDI 4650)" + (kosten ? " · Zuschuss " + eur(z) + (z ? "" : " (möglich: " + eur(zMoegl) + ")") : ""), ampel: amp, sum: z, rows, notes, chk, charts };
+}
+const CH_COL = { g: "#178038", l: "#8CC23D", a: "#FAAB1F", r: "#C0392B", n: "#B9C6BC", "": "#3A6EA5" };
+/** Balkendiagramme fürs Ergebnis (HTML) */
+function chartEl(ch) {
+  if (ch.stack) { const sum = ch.stack.reduce((a, x) => a + x[1], 0) || 1;
+    return h("div", { class: "chbox" }, h("b", null, ch.t), h("div", { class: "chstack" }, ch.stack.map(([l, v, cc]) => h("i", { style: `width:${v / sum * 100}%;background:${CH_COL[cc]}`, title: l + ": " + eur(v) }))),
+      h("div", { class: "chleg" }, ch.stack.map(([l, v, cc]) => h("span", null, h("i", { style: "background:" + CH_COL[cc] }), l + " " + eur(v) + " (" + nf(v / sum * 100) + " %)")))); }
+  const mx = ch.max || Math.max(...ch.items.map(x => x[1])) || 1;
+  return h("div", { class: "chbox" }, h("b", null, ch.t), h("div", { class: "chbars" }, ch.items.map(([l, v, cc]) => h("div", { class: "chrow" }, h("span", null, l),
+    h("div", { class: "chtrack" }, h("i", { style: `width:${Math.min(100, v / mx * 100)}%;background:${CH_COL[cc || ""]}` }), ch.ref ? h("u", { style: `left:${ch.ref[0] / mx * 100}%`, title: ch.ref[1] }) : null), h("em", null, nf(v, 2))))),
+    ch.ref ? h("div", { class: "chleg" }, h("span", null, h("i", { style: "background:#C0392B;width:2px" }), ch.ref[1])) : null);
+}
+/** Dieselben Diagramme im PDF */
+function pdfCharts(P, charts) {
+  const doc = P.doc, M = P.M, CW = P.W - 2 * M;
+  for (const ch of charts || []) {
+    if (ch.stack) { const sum = ch.stack.reduce((a, x) => a + x[1], 0) || 1; P.need(30); P.font("bold", 9, PC.dg); P.T(ch.t, M, P.y + 3); let x = M; const y = P.y + 6;
+      for (const [, v, cc] of ch.stack) { const w = v / sum * CW; doc.setFillColor(CH_COL[cc]); doc.rect(x, y, w, 7, "F"); x += w; }
+      let ly = y + 12, lx = M; for (const [l, v, cc] of ch.stack) { const t = l + " " + eur(v) + " (" + nf(v / sum * 100) + " %)"; P.font("normal", 7.8, PC.ink2); const tw = doc.getTextWidth(t) + 9; if (lx + tw > P.W - M) { lx = M; ly += 4.6; }
+        doc.setFillColor(CH_COL[cc]); doc.rect(lx, ly - 2.4, 3, 3, "F"); P.T(t, lx + 4.2, ly); lx += tw; }
+      P.y = ly + 6; continue; }
+    const mx = ch.max || 1, LW = 42, BW = CW - LW - 16, rh = 6.2; P.need(ch.items.length * rh + 16); P.font("bold", 9, PC.dg); P.T(ch.t, M, P.y + 3); let y = P.y + 7;
+    for (const [l, v, cc] of ch.items) { P.font("normal", 8, PC.ink2); P.T(l, M, y + 3.4); doc.setFillColor("#EEF2EE"); doc.rect(M + LW, y, BW, 4.4, "F");
+      doc.setFillColor(CH_COL[cc || ""]); doc.rect(M + LW, y, Math.min(1, v / mx) * BW, 4.4, "F"); P.font("bold", 8, PC.ink); P.T(nf(v, 2), M + LW + BW + 2, y + 3.4); y += rh; }
+    if (ch.ref) { const rx = M + LW + ch.ref[0] / mx * BW; doc.setDrawColor(PC.red); doc.setLineWidth(.5); doc.line(rx, P.y + 6, rx, y - 1.5); P.font("normal", 7.2, PC.red); P.T(ch.ref[1], rx + 1, y + 2); y += 4; }
+    P.y = y + 4; }
+}
 const KATALOG = [
   { g: "Dach", t: "Steildach dämmen inkl. Neueindeckung", e: "m²", min: 280, max: 380, cat: "huelle", uw: "steildach", fl: "dach" },
   { g: "Dach", t: "Oberste Geschossdecke dämmen", e: "m²", min: 40, max: 75, cat: "huelle", uw: "ogd", fl: "ogd" },
@@ -2102,7 +2246,7 @@ function vKunde(v, p) {
   let katF = "";
   const neu = (typ, extra = {}) => { const T = TYPEN[typ]; const vg = { id: uid(), typ, status: "offen", d: T.calc ? CALC[typ].init(k) : T.init(k), fotos: {}, sig: {}, created: Date.now(), ...extra }; go(typ in CALC ? "calc" : "vorgang", { kid: k.id, v: vg, neu: 1 }); };
   const tiles = [["vollmacht", "Auftrag & DSGVO", "interne Vollmacht"], ["isfp", "iSFP-Aufnahme", "Vor-Ort-Termin"], ["ea_b", "Bedarfsausweis", "Datenaufnahme + Hüllflächen"], ["ea_v", "Verbrauchsausweis", "3 Abrechnungsperioden"], ["em", "Abnahme Maßnahme", "BEG EM"], ["heizung", "Heizungsabnahme", "KfW 458 / 522"], ["antrag", "Antrag & Abschluss", "BEG EM / KfW 458"], ["check", "Checkliste", "mit Fotos"],
-    [nwg ? "nwg" : "foerder", "Förderrechner", nwg ? "Nichtwohngebäude" : "Wohngebäude"], ["wp", "Wärmepumpen-Check", "Eignung + Kosten"], ["uwert", "U-Wert-Rechner", "Schichtaufbau"], ["kosten", "Sanierungskosten", "Richtwerte"], ["lk", "Lüftungskonzept", "DIN 1946-6"], ["wbk", "Wärmebrückenkonzept", "DIN 4108 Bbl. 2"], ["heizlast", "Heizlast", "raumweise, DIN EN 12831"], ["hk", "Heizkörper-Check", "WP-tauglich? Abgleich"], ["geg", "Pflichten-Check", "GModG"], ["co2", "CO₂-Kosten", "Vermieter / Mieter"], ["honorar", "Angebot / Rechnung", "Beratungshonorar"]];
+    [nwg ? "nwg" : "foerder", "Förderrechner", nwg ? "Nichtwohngebäude" : "Wohngebäude"], ["wp", "Wärmepumpen-Check", "Eignung + Kosten"], ["wpj", "WP-Förderung JAZ", "COP, JAZ, Schall, Zuschuss"], ["uwert", "U-Wert-Rechner", "Schichtaufbau"], ["kosten", "Sanierungskosten", "Richtwerte"], ["lk", "Lüftungskonzept", "DIN 1946-6"], ["wbk", "Wärmebrückenkonzept", "DIN 4108 Bbl. 2"], ["heizlast", "Heizlast", "raumweise, DIN EN 12831"], ["hk", "Heizkörper-Check", "WP-tauglich? Abgleich"], ["geg", "Pflichten-Check", "GModG"], ["co2", "CO₂-Kosten", "Vermieter / Mieter"], ["honorar", "Angebot / Rechnung", "Beratungshonorar"]];
   const drawV = () => {
     const vs = S.vorg.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
     const hatVoll = vs.some(x => x.typ === "vollmacht" && x.sig && x.sig.kunde) || S.dateien.some(d => d.kat === VOLL_KAT);
@@ -2290,9 +2434,9 @@ function itemsView(x, change) {
 /* Rechner */
 function vRechner(v) {
   ap(v, navBar("Rechner"), h("h1", { class: "ltitle" }, "Rechner"), modeBanner(),
-    h("div", { class: "tiles" }, ["foerder", "nwg", "wp", "heizlast", "hk", "uwert", "kosten", "lk", "wbk", "geg", "co2", "honorar"].map(t => { const T = TYPEN[t];
+    h("div", { class: "tiles" }, ["foerder", "nwg", "wp", "wpj", "heizlast", "hk", "uwert", "kosten", "lk", "wbk", "geg", "co2", "honorar"].map(t => { const T = TYPEN[t];
       return h("button", { class: "tile", onclick: () => go("calc", { v: { id: uid(), typ: t, d: CALC[t].init(null), created: Date.now() }, frei: 1 }) }, h("div", { class: "ti", style: "background:" + T.farbe }, ic(T.icon)), h("b", null, T.name),
-        h("span", null, { foerder: "BAFA + KfW 458, Stand 21.07.2026", nwg: "BAFA EM + KfW 522/422", wp: "Heizlast, JAZ, Kosten", uwert: "Schichtaufbau, Dämmstärke", kosten: "Richtwerte je Maßnahme", lk: "Pflicht bei Fenstertausch", wbk: "DIN 4108 Beiblatt 2, ΔU_WB", heizlast: "Raumweise nach DIN EN 12831, PDF-Bericht", hk: "Vorlauftemperatur, Volumenströme", geg: "Was gilt nach dem GModG?", co2: "Stufenmodell Vermieter / Mieter", honorar: "Angebot und Rechnung als PDF" }[t])); })),
+        h("span", null, { foerder: "BAFA + KfW 458, Stand 21.07.2026", nwg: "BAFA EM + KfW 522/422", wp: "Heizlast, JAZ, Kosten", wpj: "VDI 4650, Schall, KfW 458", uwert: "Schichtaufbau, Dämmstärke", kosten: "Richtwerte je Maßnahme", lk: "Pflicht bei Fenstertausch", wbk: "DIN 4108 Beiblatt 2, ΔU_WB", heizlast: "Raumweise nach DIN EN 12831, PDF-Bericht", hk: "Vorlauftemperatur, Volumenströme", geg: "Was gilt nach dem GModG?", co2: "Stufenmodell Vermieter / Mieter", honorar: "Angebot und Rechnung als PDF" }[t])); })),
     h("p", { class: "stand" }, "Fördersätze: " + STAND));
 }
 function vCalc(v, p) {
@@ -2322,8 +2466,10 @@ function vCalc(v, p) {
   upd();
 }
 function resultCard(r, typ) {
-  const c = h("section", { class: "card res", "aria-live": "polite" }, h("div", { class: "big" }, h("b", null, r.big), h("span", null, ["wp", "uwert", "lk", "wbk", "geg", "co2", "hk"].includes(typ) ? "" : typ === "heizlast" ? "Heizlast" : typ === "honorar" ? "brutto" : typ === "kosten" ? "geschätzt" : "Zuschuss")), h("div", { class: "mut" }, r.sub));
+  const c = h("section", { class: "card res", "aria-live": "polite" }, h("div", { class: "big" }, h("b", null, r.big), h("span", null, ["wp", "wpj", "uwert", "lk", "wbk", "geg", "co2", "hk"].includes(typ) ? "" : typ === "heizlast" ? "Heizlast" : typ === "honorar" ? "brutto" : typ === "kosten" ? "geschätzt" : "Zuschuss")), h("div", { class: "mut" }, r.sub));
   if (r.ampel) c.append(h("div", { class: "ampel " + r.ampel[0] }, h("i"), r.ampel[1]));
+  if (r.chk && r.chk.length) c.append(h("div", { class: "chk" }, r.chk.map(([l, s, n]) => h("div", { class: "chki " + s }, h("i", null, s === "g" ? "✓" : s === "r" ? "✕" : "?"), h("span", null, h("b", null, l), h("small", null, n))))));
+  if (r.charts) for (const ch of r.charts) c.append(chartEl(ch));
   if (r.rows && r.rows.length) c.append(h("table", { class: "rt" }, h("tbody", null, r.rows.map(([a, b, s]) => h("tr", { class: s || "" }, h("td", null, a), h("td", null, b))))));
   if (r.notes && r.notes.length) c.append(h("div", { class: "note" }, r.notes.map(n => h("div", null, "• " + n))));
   return c;
@@ -2679,7 +2825,9 @@ async function pdfCalc(k, x, zeigen) {
   if (x.typ === "honorar") return await pdfHonorar(k, x, zeigen);
   const T = TYPEN[x.typ], C = CALC[x.typ], r = C.calc(x.d);
   const P = pdfStart(x.titel || T.name, "", { art: "Berechnung", meta: [k ? ["Auftraggeber", kName(k)] : null, k ? ["Objekt", objAdr(k)] : null, ["Stand", datDE(heute())], ["Erstellt von", S.profil.name]] }); if (!P) return;
-  P.hero(r.big, x.typ === "wp" ? "Empfohlene Leistung" : x.typ === "heizlast" ? "Norm-Gebäudeheizlast" : x.typ === "kosten" ? "Geschätzte Kosten" : ["foerder", "nwg"].includes(x.typ) ? "Voraussichtlicher Zuschuss" : "Ergebnis", r.sub, r.ampel);
+  P.hero(r.big, x.typ === "wpj" ? "Jahresarbeitszahl" : x.typ === "wp" ? "Empfohlene Leistung" : x.typ === "heizlast" ? "Norm-Gebäudeheizlast" : x.typ === "kosten" ? "Geschätzte Kosten" : ["foerder", "nwg"].includes(x.typ) ? "Voraussichtlicher Zuschuss" : "Ergebnis", r.sub, r.ampel);
+  if (r.chk && r.chk.length) { P.sect("Technische Mindestanforderungen (BEG EM)"); for (const [l, s, n] of r.chk) P.status(l, { g: "ja", r: "nein", y: "" }[s], n); }
+  if (r.charts) { P.sect("Darstellung"); pdfCharts(P, r.charts); }
   if (x.typ !== "wbk" && r.rows && r.rows.length) { P.sect("Berechnung im Detail"); P.table(r.rows); }
   if ((x.typ === "foerder" || x.typ === "nwg") && x.d.mass && x.d.mass.length) { for (const [kat, K] of Object.entries(FOE_KAT)) { const ms = x.d.mass.filter(m => m.kat === kat); if (!ms.length) continue; P.sect(K.t + " · " + K.p); P.table([...ms.map(m => [m.t + (m.e === "pauschal" ? "" : "  (" + nf(num(m.m), 1) + " " + m.e + " × " + eur(num(m.ep)) + ")"), eur(foeK(m))]), ["Summe " + K.t, eur(foeSum(x.d, kat)), "b"]]); } }
   if (x.typ === "wbk") { const t = z => String(z).replace(/ΔU/g, "Delta U").replace(/Ψ/g, "Psi");
