@@ -2531,7 +2531,7 @@ function pdfStart(title, sub, opt = {}) {
     if (p.logo) { try { const pr = doc.getImageProperties(p.logo); let ih = 13, iw = ih * pr.width / pr.height; if (iw > 62) { iw = 62; ih = iw * pr.height / pr.width; } doc.addImage(p.logo, p.logo.startsWith("data:image/png") ? "PNG" : "JPEG", M, 9 + (13 - ih) / 2, iw, ih); drawn = true; } catch (e) {} }
     if (!drawn) { EFF.forEach((c, i) => { doc.setFillColor(c); doc.rect(M, 10.2 + i * 1.55, 9.5 - i * .95, 1.05, "F"); });
       font("bold", 15, PC.g); T(kurz || "", M + 12.5, 16.3); if (rest) { font("normal", 6.8, PC.dg); T(rest.toUpperCase(), M + 12.5, 20.3, { charSpace: .35 }); } }
-    const r = [[p.name, "bold"], [[p.strasse, [p.plz, p.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")], [[p.tel, p.email].filter(Boolean).join("  ·  ")], [p.eeeNr ? "Energieeffizienz-Experte Nr. " + p.eeeNr : p.web]].filter(x => x[0]);
+    const r = [[p.name, "bold"], [[p.strasse, [p.plz, p.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")], [[p.tel, p.email].filter(Boolean).join("  ·  ")], [p.eeeNr ? "Energieeffizienz-Experte Nr. " + p.eeeNr : p.web], [typeof ichName === "function" && ichName() && ichName() !== p.name ? "Bearbeiter: " + ichName() : ""]].filter(x => x[0]);
     r.forEach(([t, st], i) => { font(st || "normal", 7.6, st ? PC.ink : PC.ink2); T(t, P.W - M, 11 + i * 3.4, { align: "right" }); });
     doc.setDrawColor(PC.line); doc.setLineWidth(.25); doc.line(M, 26, P.W - M, 26); P.y = 34; };
   P.head = head; head();
@@ -5758,7 +5758,7 @@ new MutationObserver(() => { if (!teamAktiv() || S.route.v !== "kunde" || docume
 /* Meine Angaben: Name und Berater-Nummer je Konto (im Büro-Team hat jeder Mitarbeiter seine eigenen) */
 const ICH = { name: "", nr: "", geladen: false };
 function ichName() { return ICH.name || (typeof teamRolle === "function" && teamRolle() === "mitglied" && typeof teamName === "function" ? teamName(S.uid) : (S.profil && S.profil.name) || ""); }
-function ichNr() { return ICH.nr || (typeof teamRolle === "function" && teamRolle() === "mitglied" ? "" : (S.profil && S.profil.eeeNr) || ""); }
+function ichNr() { return (S.profil && S.profil.eeeNr) || ""; }   // Berater-Nummer des Büros – für alle gleich
 function ichDoc() { return S.db && S.uid ? S.db.doc(`data/users/${S.uid}/ich`) : null; }
 async function ichSpeichern() {
   if (S.mode === "cloud" && ichDoc()) await ichDoc().set({ name: ICH.name, nr: ICH.nr });
@@ -5767,10 +5767,9 @@ async function ichSpeichern() {
 function ichKarte() {
   const save = debounce(async () => { await ichSpeichern(); }, 600);
   const iN = h("input", { class: "inp", id: "ich_name", value: ICH.name, placeholder: ichName() || "Vor- und Nachname", oninput: e => { ICH.name = e.target.value.trim(); save(); } });
-  const iR = h("input", { class: "inp", id: "ich_nr", value: ICH.nr, placeholder: (S.profil && S.profil.eeeNr) || "z. B. 1234-5678-90", oninput: e => { ICH.nr = e.target.value.trim(); save(); } });
   return h("section", { class: "card fsec" }, h("h4", null, "Meine Angaben"),
-    h("p", { class: "sub" }, "Ihr Name und Ihre Berater-Nummer (Energieeffizienz-Expertenliste) für dieses Konto. Sie stehen oben auf der Startseite – im Büro-Team hat jeder Mitarbeiter seine eigenen Angaben."),
-    h("div", { class: "fgrid" }, h("div", { class: "fld" }, h("label", { for: "ich_name" }, "Name"), iN), h("div", { class: "fld" }, h("label", { for: "ich_nr" }, "Berater-Nummer"), iR)));
+    h("p", { class: "sub" }, "Ihr Name für dieses Konto. Er steht auf der Startseite unter dem Logo und auf Protokollen und PDFs als „Bearbeiter“. Die Berater-Nummer kommt für alle aus den Firmendaten."),
+    h("div", { class: "fld" }, h("label", { for: "ich_name" }, "Name (Bearbeiter)"), iN));
 }
 (function () {
   let pfad = null, aus = null;
