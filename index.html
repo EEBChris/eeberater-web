@@ -2636,7 +2636,7 @@ function vMehr(v) {
     h("label", { class: "mut", style: "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13.5px" }, sigWeiss, "Weißen Hintergrund beim Hochladen entfernen (für eingescannte Unterschriften)"),
     h("p", { class: "mut", style: "font-size:12.5px;margin:6px 0 0" }, "PNG oder JPG, z. B. Unterschrift mit Firmenstempel. Das Bild wird automatisch zugeschnitten. Für BAFA-/KfW-Vollmachten bleibt die eigenhändige Unterschrift die sichere Variante."));
   drawSig();
-  ap(v, navBar("Einstellungen"), h("h1", { class: "ltitle" }, "Einstellungen"), modeBanner(), tourEinstKarte(), typeof ichKarte === "function" ? ichKarte() : null, aboKarte(), window.EEB_CLOUD ? EEB_CLOUD.karte() : null, teamKarte(), bedienKarte(), bildKarte(), kalEinstKarte(),
+  ap(v, navBar("Einstellungen"), h("h1", { class: "ltitle" }, "Einstellungen"), modeBanner(), tourEinstKarte(), typeof ichKarte === "function" ? ichKarte() : null, aboKarte(), window.EEB_CLOUD ? EEB_CLOUD.karte() : null, teamKarte(), bedienKarte(), bildKarte(), kalEinstKarte(), maKarte(),
     formView([{ t: "Energieeffizienz-Experte und Firma", sub: "Erscheint auf Vollmachten, Protokollen und PDFs. Firmenname mit Gedankenstrich (z. B. „EEB – Energie Effizientes Bauen“) wird ohne Logo als Kurzname und Zusatz dargestellt.", f: [F.s("anrede", "Anrede", ["Herr", "Frau"]), F.t("name", "Name"), F.t("firma", "Firma"), F.t("strasse", "Straße", { full: 1 }), F.t("plz", "PLZ"), F.t("ort", "Ort"), F.t("tel", "Telefon"), F.t("email", "E-Mail"), F.t("web", "Website"), F.t("eeeNr", "Nr. Energieeffizienz-Expertenliste"), F.t("bafaNr", "BAFA-Nr. Energieauditor (optional)")] }], p, { onChange: save }),
     formView([{ t: "Honorar und Rechnungsdaten", sub: "Für Angebote, Rechnungen und die Aufwandserfassung.", f: [F.n("stundensatz", "Stundensatz netto", "€/Std."), F.n("kmSatz", "Kilometerpauschale", "€/km"), F.n("zahlziel", "Zahlungsziel", "Tage"), F.c("kleinunt", "Kleinunternehmer (keine Umsatzsteuer, § 19 UStG)"),
       F.t("steuernr", "Steuernummer"), F.t("ustid", "USt-IdNr.")] }], p, { onChange: save }),
@@ -6181,9 +6181,12 @@ teamFilter = function (ks) { if (teamRolle() !== "mitglied" || darf("kAlle")) re
   return ks.filter(k => k.zust === S.uid || ((k.akte && k.akte.fristen) || []).some(f => !f.ok && f.wer === S.uid)); };
 
 /* ---------- Einträge eines Zeitraums ---------- */
+function kalQuelle() { const out = alleFristen(), r = teamRolle(), ks = r === "mitglied" && TEAM_ROH ? TEAM_ROH : S.kunden;
+  for (const k of ks || []) for (const f of ((k.akte && k.akte.fristen) || [])) if (f.ok && f.art === "termin" && (r !== "mitglied" || darf("tAlle") || kalWer(k, f) === S.uid)) out.push({ k, f });
+  return out; }
 function kalEintraege(von, bis) { // von/bis: "YYYY-MM-DD"
   const out = [];
-  for (const { k, f } of alleFristen()) { if (!f.datum || f.datum < von || f.datum > bis) continue; const u = kalWer(k, f); if (!kalSichtbar(u)) continue;
+  for (const { k, f } of kalQuelle()) { if (!f.datum || f.datum < von || f.datum > bis) continue; const u = kalWer(k, f); if (!kalSichtbar(u)) continue;
     const z = kalZeit(f), termin = f.art === "termin"; out.push({ tag: f.datum, u, t: f.t, z, dauer: termin ? (f.dauer || 90) : 0, k, f, art: termin ? "termin" : "frist" }); }
   for (const [u, d] of Object.entries(KAL.ext)) { if (!kalSichtbar(u) || !d || !d.termine) continue;
     for (const e of d.termine) { const s = new Date(e.s), en = new Date(Math.max(e.s, e.e - (e.ganz ? 1 : 0)));
@@ -6238,7 +6241,7 @@ function kalMonatKarte() {
     const eintrag = x => h(x.k ? "button" : "div", { class: "kal-e" + (konf.has(x) ? " konf" : ""), style: "--c:" + kalFarbe(x.u), onclick: x.k ? () => go("kunde", { id: x.k.id }) : null },
       h("i", { class: "kal-dot" + (x.art === "ext" ? " ext" : x.art === "frist" ? " fr" : "") }),
       h("span", { class: "kal-z" }, x.z ? x.z + (x.bis ? "–" + x.bis : "") : x.art === "ext" ? "ganzt." : x.art === "frist" ? "Frist" : "—"),
-      h("span", { class: "kal-tx" }, h("b", null, x.t), h("small", null, [zeigeName ? kalName(x.u).replace(" (ich)", "") : null, x.k ? kName(x.k) : null, x.art === "ext" ? "eigener Kalender" : null, konf.has(x) ? "⚠ überschneidet sich" : null].filter(Boolean).join(" · "))));
+      h("span", { class: "kal-tx" }, h("b", null, x.t), h("small", null, [zeigeName ? kalName(x.u).replace(" (ich)", "") : null, x.k ? kName(x.k) : null, x.art === "ext" ? "eigener Kalender" : null, x.f && x.f.ok ? "✓ wahrgenommen" : null, konf.has(x) ? "⚠ überschneidet sich" : null].filter(Boolean).join(" · "))));
     const tagKopf = tg => new Date(tg + "T12:00").toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
     let det = null;
     if (KAL.liste) { const mAnf = kalTag(new Date(j, mo, 1)), mEnd = kalTag(new Date(j, mo + 1, 0)), ab = mAnf < heuteS && mEnd >= heuteS ? heuteS : mAnf;
@@ -6526,6 +6529,183 @@ button.kal-e{cursor:pointer}.kal-e .kal-dot{margin-top:6px}.kal-e.konf{outline:2
 .kal-hilfe{margin:12px 0}.kal-hilfe ol{margin:6px 0 0;padding-left:20px;line-height:1.55;font-size:14px}
 .kal-sw{display:flex;gap:10px;align-items:flex-start;margin-top:10px;font-size:15px}.kal-sw span{display:flex;flex-direction:column}.kal-sw small{color:var(--ink3);font-size:13px}
 `; document.head.append(s); })();
+
+/* ===== Mitarbeiter: Monatsübersicht und Zeitnachweis (PDF) =====
+   Quelle: Termine (fristen art "termin": datum, zeit, dauer, wer) und erfasster Aufwand (akte.zeiten: datum, t, std, km, wer).
+   Inhaber sieht alle, Mitarbeiter nur sich selbst. */
+const MA = { monat: null };
+const maZahl = (x, d = 1) => (Math.round((+x || 0) * 10 ** d) / 10 ** d).toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: d });
+const maMonatName = m => m.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+function maGrenzen(m) { return [kalTag(new Date(m.getFullYear(), m.getMonth(), 1)), kalTag(new Date(m.getFullYear(), m.getMonth() + 1, 0))]; }
+const maAlle = () => !teamAktiv() || teamRolle() === "inhaber" || teamRolle() === "allein";
+function maLeute() { const l = kalLeute(); return maAlle() ? l : l.filter(p => p.uid === kalIch()); }
+/** Alle Termine und Aufwände eines Zeitraums, je Person */
+function maDaten(von, bis) {
+  const ks = (teamRolle() === "mitglied" && TEAM_ROH ? TEAM_ROH : S.kunden) || [], out = {};
+  const zu = u => out[u] ||= { termine: [], aufwand: [] };
+  for (const k of ks) { const a = k.akte || {};
+    for (const f of a.fristen || []) { if (f.art !== "termin" || !f.datum || f.datum < von || f.datum > bis) continue;
+      zu(kalWer(k, f)).termine.push({ datum: f.datum, zeit: kalZeit(f), dauer: +f.dauer || 0, t: f.t || "Termin", k, ok: !!f.ok }); }
+    for (const z of a.zeiten || []) { if (!z.datum || z.datum < von || z.datum > bis) continue;
+      zu(z.wer || k.zust || kalOwner()).aufwand.push({ datum: z.datum, t: z.t || "", std: num(z.std) || 0, km: num(z.km) || 0, notiz: z.notiz || "", k }); } }
+  for (const d of Object.values(out)) { d.termine.sort((a, b) => (a.datum + a.zeit) < (b.datum + b.zeit) ? -1 : 1); d.aufwand.sort((a, b) => a.datum < b.datum ? -1 : 1); }
+  return out;
+}
+function maSumme(d) {
+  d = d || { termine: [], aufwand: [] };
+  return { termine: d.termine.length, erledigt: d.termine.filter(x => x.ok || x.datum < heute()).length, terminStd: d.termine.reduce((s, x) => s + (x.dauer || 0), 0) / 60,
+    std: d.aufwand.reduce((s, x) => s + x.std, 0), km: d.aufwand.reduce((s, x) => s + x.km, 0),
+    kunden: new Set([...d.termine, ...d.aufwand].map(x => x.k.id)).size, tage: new Set([...d.termine, ...d.aufwand].map(x => x.datum)).size };
+}
+
+/* ---------- Einstellungen: Karte „Mitarbeiter“ ---------- */
+function maKarte() {
+  if (S.mode !== "cloud" && S.mode !== "local" && !S.kunden) return null;
+  if (!MA.monat) { const d = new Date(); MA.monat = new Date(d.getFullYear(), d.getMonth(), 1); }
+  const box = h("section", { class: "card fsec" });
+  const draw = () => {
+    const m = MA.monat, [von, bis] = maGrenzen(m), daten = maDaten(von, bis), leute = maLeute();
+    rc(box, h("h4", null, maAlle() && leute.length > 1 ? "Mitarbeiter" : "Meine Zeiten"),
+      h("p", { class: "sub" }, (maAlle() && leute.length > 1 ? "Termine und erfasste Arbeitszeit je Mitarbeiter." : "Deine Termine und erfasste Arbeitszeit.") + " Tippe auf eine Person für die Einzelaufstellung und den Zeitnachweis als PDF."),
+      h("div", { class: "kal-kopf", style: "margin-top:8px" },
+        h("button", { type: "button", class: "kal-nav", "aria-label": "Vormonat", onclick: () => { MA.monat = new Date(m.getFullYear(), m.getMonth() - 1, 1); draw(); } }, "‹"),
+        h("b", null, maMonatName(m)),
+        h("button", { type: "button", class: "kal-nav", "aria-label": "Nächster Monat", onclick: () => { MA.monat = new Date(m.getFullYear(), m.getMonth() + 1, 1); draw(); } }, "›")),
+      h("div", { class: "ma-liste" }, leute.map(p => { const s = maSumme(daten[p.uid]);
+        return h("button", { type: "button", class: "ma-p", style: "--c:" + p.farbe, onclick: () => maSheet(p.uid) },
+          h("div", { class: "ma-k" }, h("i"), h("b", null, p.name.replace(" (ich)", "")), ic("chev", "chev")),
+          h("div", { class: "ma-z" },
+            h("span", null, h("b", null, String(s.termine)), "Termine"),
+            h("span", null, h("b", null, maZahl(s.terminStd)), "Std. Termine"),
+            h("span", null, h("b", null, maZahl(s.std)), "Std. Arbeitszeit"),
+            h("span", null, h("b", null, maZahl(s.km, 0)), "km"))); })),
+      leute.length > 1 ? h("div", { class: "btnrow", style: "margin-top:10px" }, h("button", { class: "btn sec", onclick: () => maPdf(leute.map(p => p.uid), MA.monat) }, ic("file"), "Zeitnachweis für alle (PDF)")) : null);
+  };
+  draw(); return box;
+}
+
+/* ---------- Einzelaufstellung ---------- */
+function maSheet(u) {
+  const body = h("div"), p = kalLeute().find(x => x.uid === u) || { name: kalName(u), farbe: kalFarbe(u) };
+  const draw = () => {
+    const m = MA.monat, [von, bis] = maGrenzen(m), d = maDaten(von, bis)[u] || { termine: [], aufwand: [] }, s = maSumme(d);
+    const zeile = (a, b, c, dd, ok) => h("div", { class: "ma-e" + (ok === false ? " offen" : "") }, h("span", { class: "ma-d" }, a), h("span", { class: "ma-t" }, h("b", null, b), c ? h("small", null, c) : null), h("span", { class: "ma-w" }, dd));
+    rc(body, h("div", { class: "kal-kopf" },
+        h("button", { type: "button", class: "kal-nav", onclick: () => { MA.monat = new Date(m.getFullYear(), m.getMonth() - 1, 1); draw(); } }, "‹"),
+        h("b", null, maMonatName(m)),
+        h("button", { type: "button", class: "kal-nav", onclick: () => { MA.monat = new Date(m.getFullYear(), m.getMonth() + 1, 1); draw(); } }, "›")),
+      h("div", { class: "ma-kpi", style: "--c:" + p.farbe },
+        [[s.termine, "Termine"], [maZahl(s.terminStd), "Std. Termine"], [maZahl(s.std), "Std. Arbeitszeit"], [maZahl(s.km, 0), "km"], [s.kunden, "Kunden"], [s.tage, "Arbeitstage"]].map(([z, l]) => h("div", null, h("b", null, String(z)), h("span", null, l)))),
+      h("h4", { class: "ma-h" }, "Termine"),
+      d.termine.length ? d.termine.map(x => zeile(datDE(x.datum).slice(0, 6) + (x.zeit ? " · " + x.zeit : ""), x.t, kName(x.k) + (x.ok || x.datum < heute() ? "" : " · geplant"), x.dauer ? maZahl(x.dauer / 60) + " Std." : "–", x.ok || x.datum < heute()))
+        : h("p", { class: "mut" }, "Keine Termine in diesem Monat."),
+      h("h4", { class: "ma-h" }, "Arbeitszeit"),
+      d.aufwand.length ? d.aufwand.map(x => zeile(datDE(x.datum).slice(0, 6), x.t || "Aufwand", [kName(x.k), x.notiz].filter(Boolean).join(" · "), [x.std ? maZahl(x.std) + " Std." : "", x.km ? maZahl(x.km, 0) + " km" : ""].filter(Boolean).join(" · ")))
+        : h("p", { class: "mut" }, "Noch keine Zeiten erfasst. Zeiten trägst du beim Kunden unter „Auftragsstatus“ → „Aufwand erfassen“ ein."));
+  };
+  draw();
+  sheet(p.name.replace(" (ich)", ""), body, [{ t: "Schließen", cls: "sec", fn: () => { } }, { t: "Zeitnachweis als PDF", fn: () => { maPdf([u], MA.monat); return false; } }]);
+}
+
+/* ---------- PDF: Zeitnachweis ---------- */
+function maTabelle(P, cols, rows, summe) {
+  const doc = P.doc, M = P.M, CW = P.W - 2 * M, ges = cols.reduce((a, c) => a + c.w, 0), W = cols.map(c => c.w / ges * CW);
+  const kopf = () => { P.need(9); doc.setFillColor(PC.mint); doc.rect(M, P.y - 4.2, CW, 6.4, "F"); P.font("bold", 7.8, PC.dg);
+    let x = M; cols.forEach((c, i) => { P.T(c.t, c.r ? x + W[i] - 1.5 : x + 1.5, P.y, c.r ? { align: "right" } : undefined); x += W[i]; }); P.y += 5.2; };
+  kopf(); let z = 0;
+  for (const r of rows) {
+    P.font("normal", 8.4, PC.ink); const lines = r.map((v, i) => P.split(String(v == null ? "" : v), W[i] - 3)); const hh = Math.max(...lines.map(l => l.length)) * 3.7 + 1.8;
+    if (P.y + hh > P.H - 20) { doc.addPage(); P.head(); kopf(); }
+    if (z++ % 2) { doc.setFillColor(PC.mint2); doc.rect(M, P.y - 3.4, CW, hh, "F"); }
+    let x = M; lines.forEach((l, i) => { P.font("normal", 8.4, cols[i].mut ? PC.ink2 : PC.ink); P.T(l, cols[i].r ? x + W[i] - 1.5 : x + 1.5, P.y, cols[i].r ? { align: "right" } : undefined); x += W[i]; });
+    P.y += hh;
+  }
+  if (summe) { P.need(8); doc.setDrawColor(PC.dg); doc.setLineWidth(.35); doc.line(M, P.y - 2.6, M + CW, P.y - 2.6); P.font("bold", 8.6, PC.dg);
+    let x = M; summe.forEach((v, i) => { if (v) P.T(String(v), cols[i].r ? x + W[i] - 1.5 : x + 1.5, P.y + 1.2, cols[i].r ? { align: "right" } : undefined); x += W[i]; }); P.y += 7; }
+}
+async function maPdf(uids, monat) {
+  const [von, bis] = maGrenzen(monat), daten = maDaten(von, bis), titel = "Zeitnachweis " + maMonatName(monat);
+  const namen = uids.map(u => kalName(u).replace(" (ich)", ""));
+  const P = pdfStart(titel, uids.length === 1 ? namen[0] : "Alle Mitarbeiter", { art: "Zeitnachweis", meta: [["Zeitraum", datDE(von) + " – " + datDE(bis)], ["Mitarbeiter", uids.length === 1 ? namen[0] : uids.length + " Personen"], ["Erstellt", datDE(heute())]] });
+  if (!P) return;
+  if (uids.length > 1) {
+    P.sect("Übersicht");
+    maTabelle(P, [{ t: "Mitarbeiter", w: 30 }, { t: "Termine", w: 12, r: 1 }, { t: "Std. Termine", w: 15, r: 1 }, { t: "Std. Arbeitszeit", w: 15, r: 1 }, { t: "km", w: 10, r: 1 }, { t: "Kunden", w: 11, r: 1 }, { t: "Tage", w: 9, r: 1 }],
+      uids.map((u, i) => { const s = maSumme(daten[u]); return [namen[i], s.termine, maZahl(s.terminStd), maZahl(s.std), maZahl(s.km, 0), s.kunden, s.tage]; }),
+      (() => { const all = uids.map(u => maSumme(daten[u])), sum = k => all.reduce((a, s) => a + s[k], 0); return ["Summe", sum("termine"), maZahl(sum("terminStd")), maZahl(sum("std")), maZahl(sum("km"), 0), "", ""]; })());
+  }
+  uids.forEach((u, i) => { const d = daten[u] || { termine: [], aufwand: [] }, s = maSumme(d);
+    if (uids.length > 1) { P.doc.addPage(); P.head(); P.n = 0; }
+    P.sect(namen[i] + " – Zusammenfassung");
+    P.kv("Termine", s.termine + " (davon " + s.erledigt + " durchgeführt)"); P.kv("Dauer der Termine", maZahl(s.terminStd) + " Std."); P.kv("Arbeitszeit gesamt", maZahl(s.std) + " Std. (inkl. wahrgenommener Termine)");
+    P.kv("Gefahrene Kilometer", maZahl(s.km, 0) + " km"); P.kv("Betreute Kunden", String(s.kunden)); P.kv("Arbeitstage mit Einträgen", String(s.tage));
+    P.sect("Termine");
+    if (d.termine.length) maTabelle(P, [{ t: "Datum", w: 14 }, { t: "Zeit", w: 9 }, { t: "Termin", w: 38 }, { t: "Kunde", w: 25, mut: 1 }, { t: "Dauer", w: 10, r: 1 }, { t: "Status", w: 13 }],
+      d.termine.map(x => [datDE(x.datum), x.zeit || "–", x.t, kName(x.k), x.dauer ? maZahl(x.dauer / 60) + " h" : "–", x.ok || x.datum < heute() ? "durchgeführt" : "geplant"]),
+      ["", "", "", "Summe", maZahl(s.terminStd) + " h", ""]);
+    else P.para("Keine Termine in diesem Monat.");
+    P.sect("Arbeitszeit");
+    if (d.aufwand.length) maTabelle(P, [{ t: "Datum", w: 14 }, { t: "Tätigkeit", w: 26 }, { t: "Kunde", w: 24, mut: 1 }, { t: "Notiz", w: 25, mut: 1 }, { t: "Std.", w: 9, r: 1 }, { t: "km", w: 8, r: 1 }],
+      d.aufwand.map(x => [datDE(x.datum), x.t, kName(x.k), x.notiz, x.std ? maZahl(x.std) : "", x.km ? maZahl(x.km, 0) : ""]),
+      ["", "", "", "Summe", maZahl(s.std), maZahl(s.km, 0)]);
+    else P.para("Keine Arbeitszeit erfasst.");
+    P.need(60); P.sect("Bestätigung"); P.sigs(null, ["Mitarbeiter", "Arbeitgeber"]);
+  });
+  const blob = P.finish(), nm = ("Zeitnachweis " + maMonatName(monat) + " " + (uids.length === 1 ? namen[0] : "Alle")).replace(/[^\wäöüÄÖÜß .-]+/g, "").replace(/\s+/g, "_") + ".pdf";
+  await saveFile(nm, blob);
+}
+
+/* ---------- Aufwand erfassen: mit „Für wen“ ---------- */
+zeitSheet = function (k, done) {
+  const st = { datum: heute(), t: TAETIG[0], std: "", km: "", notiz: "" };
+  const wer = kalWerFeld(k, st), body = formView([{ t: "Aufwand", f: [F.d("datum", "Datum"), wer, F.combo("t", "Tätigkeit", TAETIG), F.n("std", "Stunden", "Std."), F.n("km", "Gefahrene Kilometer", "km"), F.t("notiz", "Notiz", { full: 1 })].filter(Boolean) }], st, {});
+  sheet("Aufwand erfassen", body, [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: "Speichern", fn: async () => { if (!num(st.std) && !num(st.km)) { toast("Bitte Stunden oder Kilometer eingeben."); return false; }
+    await akteAendern(k.id, a => a.zeiten.push({ id: uid(), datum: st.datum, t: st.t, std: st.std, km: st.km, notiz: st.notiz, wer: st.wer || kalIch() })); toast("Aufwand gespeichert"); done && done(); } }]);
+};
+(function () { const s = document.createElement("style"); s.textContent = `
+.ma-liste{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.ma-p{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;font:inherit;color:var(--ink);cursor:pointer;box-shadow:inset 4px 0 0 var(--c)}
+.ma-k{display:flex;align-items:center;gap:8px}.ma-k i{width:10px;height:10px;border-radius:50%;background:var(--c)}.ma-k b{flex:1;font-size:15px}.ma-k .chev{width:16px;height:16px;color:var(--ink3)}
+.ma-z{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px}.ma-z span{display:flex;flex-direction:column;font-size:11.5px;color:var(--ink3);line-height:1.25}.ma-z b{font-size:16px;color:var(--ink)}
+.ma-kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0 4px}.ma-kpi div{background:var(--soft);border-radius:10px;padding:8px;display:flex;flex-direction:column;box-shadow:inset 0 3px 0 var(--c)}
+.ma-kpi b{font-size:18px}.ma-kpi span{font-size:12px;color:var(--ink3)}
+.ma-h{margin:14px 0 4px}.ma-e{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line)}.ma-e.offen{opacity:.7}
+.ma-d{flex:none;width:92px;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}.ma-t{flex:1;min-width:0;display:flex;flex-direction:column}.ma-t b{font-size:14px;overflow-wrap:anywhere}.ma-t small{font-size:12.5px;color:var(--ink3)}
+.ma-w{flex:none;font-size:13px;font-weight:600;text-align:right}
+`; document.head.append(s); })();
+
+/* ---------- Termine nach Ablauf automatisch als wahrgenommen buchen ----------
+   Ein Termin, der bis zum Ende seines Tages nicht gelöscht wurde, gilt als durchgeführt:
+   Er wird beim Kunden abgehakt (wahrgenommen) und als Arbeitszeit beim zuständigen Mitarbeiter eingetragen.
+   Wird der Termin später doch gelöscht, verschwindet auch die automatisch gebuchte Zeit. */
+const maTaetig = f => { const t = String(f.t || "").replace(/\s+–\s+.*$/, "").trim();
+  return /vor-ort|datenaufnahme|begehung/i.test(t) ? "Vor-Ort-Termin" : /abnahme|baubegleitung|blower|thermograf/i.test(t) ? "Baubegleitung / Abnahme" : t || "Vor-Ort-Termin"; };
+let MA_AUTO_LAEUFT = false;
+async function maAuto() {
+  if (MA_AUTO_LAEUFT || !S.mode || !S.kunden || teamRolle() === "fremd") return; MA_AUTO_LAEUFT = true;
+  try {
+    const r = teamRolle(), alle = r === "inhaber" || r === "allein", hz = heute(), ks = (r === "mitglied" && TEAM_ROH ? TEAM_ROH : S.kunden).slice();
+    let n = 0;
+    for (const k of ks) { const a = k.akte || {}, fr = a.fristen || [], zs = a.zeiten || [];
+      const faellig = fr.filter(f => f.art === "termin" && !f.ok && f.datum && f.datum < hz && (alle || kalWer(k, f) === S.uid));
+      const verwaist = zs.filter(z => z.termin && !fr.some(f => f.id === z.termin) && (alle || z.wer === S.uid));
+      if (!faellig.length && !verwaist.length) continue;
+      if (!(S.kunden || []).some(x => x.id === k.id)) continue; // nur Kunden, die dieses Gerät bearbeiten darf
+      await akteAendern(k.id, x => {
+        x.zeiten ||= [];
+        for (const f0 of faellig) { const f = x.fristen.find(y => y.id === f0.id); if (!f || f.ok) continue;
+          f.ok = true; f.wahrgenommen = hz;
+          if (!x.zeiten.some(z => z.termin === f.id)) { const dau = +f.dauer || 90, z = kalZeit(f);
+            x.zeiten.push({ id: uid(), datum: f.datum, t: maTaetig(f), std: maZahl(dau / 60, 2), km: "", notiz: (z ? z + " Uhr · " : "") + "automatisch aus Termin", wer: f.wer || k.zust || kalOwner(), termin: f.id }); n++; } }
+        x.zeiten = x.zeiten.filter(z => !z.termin || x.fristen.some(f => f.id === z.termin));
+      });
+    }
+    if (n) toast(n === 1 ? "1 vergangener Termin als wahrgenommen gebucht" : n + " vergangene Termine als wahrgenommen gebucht");
+  } catch (e) { console.warn("Termin-Buchung", e); } finally { MA_AUTO_LAEUFT = false; }
+}
+(function () { const w = setInterval(() => { if (!S.mode || !S.kunden || S.loading) return; clearInterval(w);
+    setTimeout(maAuto, 4000); setInterval(maAuto, 30 * 60e3); }, 500);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(maAuto, 1500); }); })();
 
 </script>
 </body></html>
