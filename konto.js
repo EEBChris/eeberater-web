@@ -442,5 +442,5 @@ window.EEB_CLOUD = (function () {
 
   return { verbinden, karte, abgleichen, status, angemeldet: () => !!sess, uid: () => sess && sess.uid, anmeldeSheet, beitretenSheet, email: () => sess && sess.email,
     abmeldenFragen: () => ask("Abmelden?", status.offen ? "Achtung: " + status.offen + " Änderung(en) sind noch nicht übertragen und gehen beim Abmelden verloren. Bitte erst mit Internet abgleichen." : "Ihre Daten bleiben im Konto. Danach können Sie sich mit einem anderen Konto anmelden.", "Abmelden", () => abmelden(), true),
-    abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config, smCode };
+    abo, aboCache, betaEinloesen, paypalAktivieren, paypalEinrichten, config, smCode, fn, bereich: () => bereich };
 })();
