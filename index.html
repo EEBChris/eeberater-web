@@ -6791,5 +6791,153 @@ function reAbschnitt(k) {
     } catch (e) { console.warn("Rechnungsempfänger", e); }
   }; })();
 
+/* ===== Gebäudemaße: Grundrissformen und Anbau =====
+   Formen: Rechteck, L, U, T, versetzt, frei. Jede Form wird in Rechtecke zerlegt [Länge, Tiefe];
+   daraus ergeben sich Grundfläche, Umfang, Giebel- und Dachflächen. Länge/Breite (g_l, g_b) werden bei
+   anderen Formen automatisch als Außenmaße (umschließendes Rechteck) gesetzt, damit alle anderen Teile der App weiter funktionieren.
+   Anbau: beheizt (gehört zur Hülle) oder unbeheizt (Trennwand zum Anbau). */
+const GF_FORMEN = [["rechteck", "Rechteck"], ["L", "L-Form"], ["U", "U-Form"], ["T", "T-Form"], ["versetzt", "Versetzt"], ["frei", "Freie Form"]];
+const GF_POLY = {
+  rechteck: { p: "10,10 90,10 90,70 10,70", l: [["a", 50, 6], ["b", 95, 42]] },
+  L: { p: "10,10 90,10 90,35 40,35 40,70 10,70", l: [["a", 50, 6], ["b", 4, 42], ["c", 95, 25], ["d", 25, 79]] },
+  U: { p: "10,10 90,10 90,70 65,70 65,35 35,35 35,70 10,70", l: [["a", 50, 6], ["b", 4, 42], ["c", 50, 31], ["d", 22, 79]] },
+  T: { p: "10,10 90,10 90,35 62,35 62,72 38,72 38,35 10,35", l: [["a", 50, 6], ["c", 95, 25], ["d", 50, 81], ["e", 69, 56]] },
+  versetzt: { p: "10,25 50,25 50,10 90,10 90,55 50,55 50,70 10,70", l: [["a₁", 30, 79], ["b₁", 4, 50], ["a₂", 70, 6], ["b₂", 96, 35], ["w", 44, 43]] },
+  frei: { p: "12,22 40,8 88,18 82,52 60,72 18,64", l: [["A, U", 50, 44]] }
+};
+function gfSvg(form, klein) {
+  const g = GF_POLY[form] || GF_POLY.rechteck, fs = klein ? 0 : 9;
+  return `<svg viewBox="-2 0 104 86" width="${klein ? 46 : 150}" height="${klein ? 38 : 124}" aria-hidden="true"><polygon points="${g.p}" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="${klein ? 3 : 2}" stroke-linejoin="round"/>${fs ? g.l.map(([t, x, y]) => `<text x="${x}" y="${y}" font-size="${fs}" font-weight="700" text-anchor="middle" dominant-baseline="middle" fill="currentColor">${t}</text>`).join("") : ""}</svg>`;
+}
+const gfForm = d => GF_POLY[d.g_form] ? d.g_form : "rechteck";
+/** Grundriss aus der gewählten Form: { A, U, teile:[[länge, tiefe]], L, B } oder null */
+function gfMasse(d) {
+  const f = gfForm(d), n = k => num(d[k]);
+  if (f === "rechteck") { const L = n("g_l"), B = n("g_b"); return L && B ? { A: L * B, U: 2 * (L + B), teile: [[L, B]], L, B } : null; }
+  if (f === "L") { const a = n("g_fa"), b = n("g_fb"), c = n("g_fc"), e = n("g_fd"); if (!a || !b || !c || !e || c >= b || e >= a) return null;
+    return { A: a * c + e * (b - c), U: 2 * (a + b), teile: [[a, c], [b - c, e]], L: a, B: b }; }
+  if (f === "U") { const a = n("g_fa"), b = n("g_fb"), c = n("g_fc"), e = n("g_fd"); if (!a || !b || !c || !e || c >= b || 2 * e >= a) return null;
+    return { A: a * c + 2 * e * (b - c), U: 2 * (a + b) + 2 * (b - c), teile: [[a, c], [b - c, e], [b - c, e]], L: a, B: b }; }
+  if (f === "T") { const a = n("g_fa"), c = n("g_fc"), e = n("g_fd"), s = n("g_fe"); if (!a || !c || !e || !s || e >= a) return null;
+    return { A: a * c + e * s, U: 2 * a + 2 * c + 2 * s, teile: [[a, c], [s, e]], L: a, B: c + s }; }
+  if (f === "versetzt") { const a1 = n("g_fa"), b1 = n("g_fb"), a2 = n("g_fa2"), b2 = n("g_fb2"); if (!a1 || !b1 || !a2 || !b2) return null;
+    const w = Math.min(n("g_fw") || Math.min(b1, b2), b1, b2);
+    return { A: a1 * b1 + a2 * b2, U: 2 * (a1 + b1 + a2 + b2) - 2 * w, teile: [[a1, b1], [a2, b2]], L: a1 + a2, B: Math.max(b1, b2) }; }
+  if (f === "frei") { const A = n("g_ff"), U = n("g_fu"); if (!A || !U) return null; const L0 = n("g_l"), B0 = n("g_b");
+    // Ersatz-Rechteck mit gleicher Fläche und gleichem Umfang (für Dach und Giebel), sonst quadratnah
+    const s = U / 2, disk = s * s - 4 * A, Lr = disk > 0 ? (s + Math.sqrt(disk)) / 2 : Math.sqrt(A), Br = A / Lr;
+    return { A, U, teile: [[L0 && B0 ? L0 : Lr, L0 && B0 ? A / L0 : Br]], L: L0 || Lr, B: B0 || Br }; }
+  return null;
+}
+/** Außenmaße bei anderen Formen in g_l/g_b übernehmen (für Hottgenroth, Heizlast, Sanierungsmappe usw.) */
+function gfSync(d) { const f = gfForm(d); if (f === "rechteck" || f === "frei") return; const m = gfMasse(d); if (m) { d.g_l = String(Math.round(m.L * 100) / 100).replace(".", ","); d.g_b = String(Math.round(m.B * 100) / 100).replace(".", ","); } }
+
+geo = function (d) {
+  gfSync(d); const M = gfMasse(d); if (!M) return null;
+  const gs = num(d.g_gs) || 2, gh = num(d.g_gh) || 2.75, df = d.g_dach || "satteldach", steil = df !== "flachdach";
+  const ne = Math.min(Math.max(num(d.g_neig) || 35, 0), 75) * Math.PI / 180, tn = Math.tan(ne), kel = d.g_keller || "unbeheizt";
+  const fa = d.g_fen === "" || d.g_fen == null ? 20 : num(d.g_fen);
+  const wff = num(d.g_wf) ? num(d.g_wf) / 100 : .78, dgf = { satteldach: .55, walmdach: .45, pultdach: .65 }[df] || 0;
+  const gf = M.A, u = M.U, wh = gs * gh, T = M.teile;
+  const gieb = T.reduce((s, [l, t]) => s + (df === "satteldach" ? t * t / 4 * tn : df === "pultdach" ? t * t * tn : 0), 0);
+  const dgArt = d.g_dg === "ja" || d.g_dg === "teil" ? d.g_dg : "nein", dgHeiz = d.g_dg_heiz !== "nein", dgNutz = gf * dgf;
+  const aDG = !steil || dgArt === "nein" || !dgHeiz ? 0 : dgArt === "ja" ? 1 : num(d.g_dg_fl) && dgNutz ? Math.min(1, num(d.g_dg_fl) / dgNutz) : .5;
+  const aK = kel === "beheizt" ? 1 : kel === "teil" ? (num(d.g_kel_fl) ? Math.min(1, num(d.g_kel_fl) / gf) : .5) : 0;
+  // ---- Anbau ----
+  const anbArt = d.g_anb === "beheizt" || d.g_anb === "unbeheizt" ? d.g_anb : "kein";
+  let A = null;
+  if (anbArt !== "kein" && num(d.g_anb_l) && num(d.g_anb_b)) {
+    const l = num(d.g_anb_l), b = num(d.g_anb_b), w = Math.min(num(d.g_anb_w) || l, l + b), gsa = num(d.g_anb_gs) || 1, gha = num(d.g_anb_gh) || gh, wha = gsa * gha;
+    const adf = d.g_anb_dach || "flachdach", ane = adf === "flachdach" ? 0 : Math.min(Math.max(num(d.g_anb_neig) || 20, 0), 60) * Math.PI / 180;
+    const ag = l * b, ua = 2 * (l + b) - w, trenn = w * Math.min(wha, wh), akel = d.g_anb_keller || "nein";
+    A = { art: anbArt, gf: ag, w, trenn, wh: wha, dachTyp: adf, steil: adf !== "flachdach",
+      aw: anbArt === "beheizt" ? ua * wha + (adf === "satteldach" ? b * b / 4 * Math.tan(ane) : adf === "pultdach" ? b * b * Math.tan(ane) / 2 : 0) : 0,
+      dach: anbArt === "beheizt" ? (adf === "flachdach" ? ag : ag / Math.cos(ane)) : 0,
+      boden: anbArt === "beheizt" ? ag : 0, bodenTyp: akel === "unbeheizt" ? "Kellerdecke" : "Boden gegen Erdreich",
+      ve: anbArt === "beheizt" ? ag * wha + (adf === "satteldach" ? ag * b * Math.tan(ane) / 4 : adf === "pultdach" ? ag * b * Math.tan(ane) / 2 : 0) : 0,
+      wfl: anbArt === "beheizt" ? ag * gsa * wff : 0, bj: d.g_anb_bj || "" };
+  }
+  const awHaupt = u * wh + gieb * aDG - (A ? A.trenn : 0);           // Außenwand Hauptgebäude ohne Trennwand zum Anbau
+  const awb = awHaupt + (A ? A.aw : 0), fen = awb * fa / 100;
+  const dachVol = steil ? T.reduce((s, [l, t]) => s + (df === "satteldach" ? l * t * t * tn / 4 : df === "pultdach" ? l * t * t * tn / 2 : l * t * t * tn / 6), 0) * aDG : 0;
+  const ve = gf * wh + dachVol + gf * 2.5 * aK + (A ? A.ve : 0), an = ve * (gh >= 2.5 && gh <= 3 ? .32 : (1 / gh - .04));
+  const dach = steil ? (gf + u / 2 + T.length) / Math.cos(ne) : gf, dachH = steil ? gf / Math.cos(ne) * aDG : 0, ogd = steil ? gf * (1 - aDG) : 0, flach = steil ? 0 : gf;
+  const keller = kel === "keiner" ? 0 : gf * (1 - aK), boden = kel === "keiner" ? gf : gf * aK, kw = kel === "keiner" ? 0 : u * 2.4, kwH = kw * aK;
+  const wflDG = dgArt === "teil" && aDG && num(d.g_dg_fl) ? num(d.g_dg_fl) : dgNutz * aDG, wflKel = kel === "teil" && num(d.g_kel_fl) ? num(d.g_kel_fl) * wff : 0;
+  const anbH = A ? (A.art === "beheizt" ? A.dach + A.boden : A.trenn) : 0;
+  const huelle = awb + dachH + ogd + flach + keller + boden + kwH + anbH;
+  return { gf, u, wh, gieb, awb, fen, awn: awb - fen, nFen: Math.round(fen / 1.6), ger: u * (wh + 1) + gieb + (A && A.art === "beheizt" ? (2 * (num(d.g_anb_l) + num(d.g_anb_b)) - A.w) * (A.wh + 1) : 0),
+    dach, dachH, aDG, aK, dgArt, kel, ogd, flach, keller, boden, kw, kwH, huelle, wfl: Math.round(gf * gs * wff + wflDG + wflKel + (A ? A.wfl : 0)), steil, ve, an,
+    form: gfForm(d), teile: T, anbau: A,
+    anTxt: "Nutzfläche AN (GEG) ca. " + Math.round(an) + " m², beheiztes Volumen " + Math.round(ve) + " m³, Hüllfläche ca. " + Math.round(huelle) + " m²" };
+};
+(function () { const gr = geoRows;
+  geoRows = function (g) { const r = gr(g); if (!g) return r;
+    const i = r.findIndex(x => x[0] === "Thermische Hüllfläche A");
+    const z = [];
+    if (g.form && g.form !== "rechteck") z.push(["Grundriss", (GF_FORMEN.find(f => f[0] === g.form) || [, ""])[1] + ", Umfang " + nf(g.u, 1) + " m"]);
+    if (g.anbau) { const A = g.anbau;
+      if (A.art === "beheizt") z.push(["Anbau (beheizt): Grundfläche", nf(A.gf, 1) + " m²"], ["Anbau: Außenwand (in Außenwand enthalten)", nf(A.aw, 1) + " m²"], ["Anbau: " + (A.steil ? "Dach" : "Flachdach"), nf(A.dach, 1) + " m²"], ["Anbau: " + A.bodenTyp, nf(A.boden, 1) + " m²"]);
+      else z.push(["Anbau (unbeheizt): Grundfläche", nf(A.gf, 1) + " m²"], ["Wand zum unbeheizten Anbau", nf(A.trenn, 1) + " m²"]); }
+    if (z.length) r.splice(i < 0 ? r.length : i, 0, ...z); return r; }; })();
+
+/* ---------- Formular: Formwahl, Maße je Form, Anbau ---------- */
+(function () {
+  const istRF = d => ["rechteck", "frei"].includes(gfForm(d));
+  const iL = GEO_F.findIndex(f => f.k === "g_l"), iB = GEO_F.findIndex(f => f.k === "g_b");
+  if (iL < 0 || iB < 0) return;
+  GEO_F[iL] = Object.assign({}, GEO_F[iL], { show: d => istRF(d), l: "Länge a (außen)", ph: d => gfForm(d) === "frei" ? "optional, für Dachberechnung" : "" });
+  GEO_F[iB] = Object.assign({}, GEO_F[iB], { show: d => istRF(d), l: "Breite b (außen)", ph: d => gfForm(d) === "frei" ? "optional" : "" });
+  const zeig = (...fs) => d => fs.includes(gfForm(d));
+  const wahl = { ty: "dyn", render: d => { const akt = gfForm(d);
+      return h("div", { class: "gf-wahl" }, h("span", { class: "lb" }, "Grundriss – Form antippen"),
+        h("div", { class: "gf-kacheln" }, GF_FORMEN.map(([id, name], i) => { const b = h("button", { type: "button", class: "gf-k" + (akt === id ? " on" : ""), "aria-pressed": String(akt === id), onclick: () => {
+            const seg = document.querySelector("#f_g_form"); const btn = seg && seg.children[i]; if (btn) btn.click(); else { d.g_form = id; } } }, name);
+          b.insertAdjacentHTML("afterbegin", gfSvg(id, true)); return b; })),
+        (() => { const sk = h("div", { class: "gf-skizze" }); sk.innerHTML = gfSvg(akt, false);
+          sk.append(h("p", null, { rechteck: "a = Länge, b = Breite (Außenmaße).", L: "a = Gesamtlänge, b = Gesamtbreite, c = Tiefe des langen Flügels, d = Breite des kurzen Flügels.", U: "a = Gesamtlänge, b = Gesamtbreite, c = Tiefe des Mittelteils, d = Breite eines Seitenflügels.", T: "a = Länge des Querbaus, c = Tiefe des Querbaus, d = Breite des Stammes, e = Länge des Stammes.", versetzt: "Zwei versetzte Baukörper: a₁ × b₁ und a₂ × b₂, w = gemeinsame Wandlänge.", frei: "Grundfläche und Umfang z. B. aus dem Plan oder Lageplan übernehmen." }[akt])); return sk; })()); }, pdf: () => [] };
+  const nf2 = (k, l, show, ph) => F.n(k, l, "m", { show, ph });
+  const neu = [
+    F.seg("g_form", "Grundrissform", GF_FORMEN, { re: 1, cls: "gf-seg" }), wahl,
+    nf2("g_fa", "Länge a", zeig("L", "U", "T")), nf2("g_fb", "Breite b", zeig("L", "U")), nf2("g_fc", "Tiefe c", zeig("L", "U", "T")), nf2("g_fd", "Breite d", zeig("L", "U", "T")), nf2("g_fe", "Länge e", zeig("T")),
+    nf2("g_fa", "Länge a₁", zeig("versetzt")), nf2("g_fb", "Breite b₁", zeig("versetzt")), nf2("g_fa2", "Länge a₂", zeig("versetzt")), nf2("g_fb2", "Breite b₂", zeig("versetzt")), nf2("g_fw", "Gemeinsame Wand w", zeig("versetzt"), "leer = kürzere Breite"),
+    F.n("g_ff", "Grundfläche (außen)", "m²", { show: zeig("frei") }), F.n("g_fu", "Umfang (außen)", "m", { show: zeig("frei") }),
+    { ty: "dyn", render: d => { const f = gfForm(d); if (f === "rechteck") return null; const m = gfMasse(d); return h("div", { class: "vmsg " + (m ? "ok" : ""), style: "margin:0" }, m ? "Grundfläche " + nf(m.A, 1) + " m², Umfang " + nf(m.U, 1) + " m, Außenmaße " + nf(m.L, 2) + " × " + nf(m.B, 2) + " m" : "Bitte alle Maße eintragen (die Teilmaße müssen kleiner als die Gesamtmaße sein)."); }, pdf: d => { const m = gfMasse(d); return m && gfForm(d) !== "rechteck" ? [["Grundriss", (GF_FORMEN.find(x => x[0] === gfForm(d)) || [, ""])[1] + " – Grundfläche " + nf(m.A, 1) + " m², Umfang " + nf(m.U, 1) + " m"]] : []; } }];
+  GEO_F.splice(iL, 0, ...neu);
+  // Anbau am Ende des Abschnitts (vor der Flächenübersicht)
+  const iK = GEO_F.findIndex(f => f.ty === "dyn" && f.render === geoCard), anb = d => d.g_anb === "beheizt" || d.g_anb === "unbeheizt";
+  const anbau = [
+    { ty: "dyn", render: () => h("h5", { class: "gf-h" }, "Anbau"), pdf: () => [] },
+    F.seg("g_anb", "Anbau", [["kein", "kein Anbau"], ["beheizt", "beheizt"], ["unbeheizt", "unbeheizt"]], { re: 1 }),
+    { ty: "dyn", render: d => anb(d) ? h("p", { class: "mut", style: "margin:0;font-size:13px" }, d.g_anb === "beheizt" ? "Beheizter Anbau (z. B. Wohnraumerweiterung): Wände, Dach und Boden gehören zur thermischen Hülle." : "Unbeheizter Anbau (z. B. Garage, Wintergarten, Abstellraum): Die gemeinsame Wand zählt als Wand zum unbeheizten Bereich.") : null, pdf: () => [] },
+    F.n("g_anb_l", "Länge Anbau (entlang Hauptgebäude)", "m", { show: anb }), F.n("g_anb_b", "Tiefe Anbau", "m", { show: anb }),
+    F.n("g_anb_w", "Anschluss an Hauptgebäude", "m", { show: anb, ph: d => num(d.g_anb_l) ? "leer = " + d.g_anb_l + " m" : "" }),
+    F.n("g_anb_gs", "Geschosse Anbau", "", { show: anb, ph: "1" }), F.n("g_anb_gh", "Geschosshöhe Anbau", "m", { show: anb, ph: d => d.g_gh || "2,75" }),
+    F.seg("g_anb_dach", "Dach Anbau", [["flachdach", "Flachdach"], ["pultdach", "Pultdach"], ["satteldach", "Satteldach"]], { show: anb, re: 1 }),
+    F.n("g_anb_neig", "Dachneigung Anbau", "°", { show: d => anb(d) && d.g_anb_dach && d.g_anb_dach !== "flachdach", ph: "20" }),
+    F.seg("g_anb_keller", "Unter dem Anbau", [["nein", "Bodenplatte (Erdreich)"], ["unbeheizt", "Keller unbeheizt"]], { show: d => d.g_anb === "beheizt" }),
+    F.t("g_anb_bj", "Baujahr Anbau", { show: anb, im: "numeric" })];
+  GEO_F.splice(iK < 0 ? GEO_F.length : iK, 0, ...anbau);
+  GEO_SEC.sub = "Außenmaße des beheizten Gebäudes, Vollgeschosse ohne Keller und Dachgeschoss. Form antippen und Maße laut Skizze eintragen; einen Anbau weiter unten erfassen.";
+  GEO_KEYS.push("g_form", "g_fa", "g_fb", "g_fc", "g_fd", "g_fe", "g_fa2", "g_fb2", "g_fw", "g_ff", "g_fu", "g_anb", "g_anb_l", "g_anb_b", "g_anb_w", "g_anb_gs", "g_anb_gh", "g_anb_dach", "g_anb_neig", "g_anb_keller", "g_anb_bj");
+  Object.assign(GEO_DEF, { g_form: "rechteck", g_anb: "kein", g_anb_dach: "flachdach", g_anb_keller: "nein" });
+  if (typeof HILFE === "object") Object.assign(HILFE, {
+    g_fa: ["Gesamtlänge bzw. Länge des Hauptteils – siehe Skizze.", "14,5"], g_fb: ["Gesamtbreite bzw. Breite – siehe Skizze.", "11"], g_fc: ["Tiefe des Flügels/Querbaus – siehe Skizze.", "8"],
+    g_fd: ["Breite des Seitenflügels bzw. Stammes – siehe Skizze.", "6"], g_fe: ["Länge des Stammes bei der T-Form – siehe Skizze.", "5"], g_fw: ["Länge der Wand, an der die beiden Baukörper aneinanderstoßen.", "7"],
+    g_ff: ["Grundfläche nach Außenmaßen, z. B. aus dem Lageplan.", "132"], g_fu: ["Umfang nach Außenmaßen (Summe aller Außenwandlängen).", "48"],
+    g_anb_l: ["Länge des Anbaus entlang der Wand des Hauptgebäudes.", "4"], g_anb_b: ["Wie weit der Anbau vom Hauptgebäude absteht.", "3,5"], g_anb_w: ["Länge, mit der der Anbau an das Hauptgebäude anschließt – meist gleich der Länge.", "4"],
+    g_anb_bj: ["Baujahr des Anbaus, falls abweichend vom Hauptgebäude.", "1995"] });
+})();
+(function () { const s = document.createElement("style"); s.textContent = `
+.gf-seg,.fld:has(> .gf-seg){display:none!important}.gf-wahl .lb{display:block;margin-bottom:6px}
+.gf-kacheln{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.gf-k{display:flex;flex-direction:column;align-items:center;gap:2px;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:8px 4px 6px;font:inherit;font-size:13px;color:var(--ink2);cursor:pointer}
+.gf-k svg{color:var(--ink3)}.gf-k.on{border-color:var(--g);background:var(--soft);color:var(--dg,var(--ink));font-weight:700}.gf-k.on svg{color:var(--g)}
+@media(min-width:640px){.gf-kacheln{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.gf-skizze svg{width:150px!important;height:124px!important;max-width:none!important;flex:none}.gf-k svg{width:46px!important;height:38px!important}
+.gf-skizze{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px;border-radius:12px;background:var(--soft);color:var(--g)}.gf-skizze p{margin:0;color:var(--ink2);font-size:13.5px;line-height:1.45}
+.gf-h{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:15px}
+`; document.head.append(s); })();
+
 </script>
 </body></html>
