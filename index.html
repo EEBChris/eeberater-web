@@ -6707,5 +6707,35 @@ async function maAuto() {
     setTimeout(maAuto, 4000); setInterval(maAuto, 30 * 60e3); }, 500);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(maAuto, 1500); }); })();
 
+/* ===== Original-Formulare prüfen: beschädigte Fassungen erkennen =====
+   Eine hochgeladene Fassung gilt als beschädigt, wenn ihre Größe nicht mehr zur Größe beim Hochladen passt
+   oder sie nicht mit „%PDF“ beginnt / nicht mit „%%EOF“ endet. Dann wird – falls vorhanden – das in der App
+   enthaltene Original verwendet, sonst erscheint ein deutlicher Hinweis zum Neu-Hochladen. */
+async function formularHeil(f, b) {
+  if (!b || !b.size) return false;
+  if (f && f.size && !f.b64 && b.size !== f.size) return false;
+  try { const a = new Uint8Array(await b.slice(0, 8).arrayBuffer()), e = new TextDecoder("latin1").decode(new Uint8Array(await b.slice(Math.max(0, b.size - 1024)).arrayBuffer()));
+    return String.fromCharCode(...a.slice(0, 5)) === "%PDF-" && e.includes("%%EOF"); } catch (x) { return true; }
+}
+(function () { const fb = formularBlob;
+  formularBlob = async function (f) {
+    let b = null; try { b = await fb(f); } catch (e) { b = null; }
+    if (f && f.b64) return b;
+    if (await formularHeil(f, b)) return b;
+    const o = (window.ORIG_EINGEBAUT || []).find(x => x.art === f.art);
+    if (o) { toast("Ihre hochgeladene Fassung von „" + f.art + "“ ist beschädigt – es wird das in der App enthaltene Original verwendet. Bitte die beschädigte Fassung unter Einstellungen entfernen.");
+      return await fb(Object.assign({ eingebaut: true }, o)); }
+    toast("Das gespeicherte Formular „" + (f.art || f.name) + "“ ist beschädigt. Bitte unter Einstellungen → BAFA- und KfW-Vollmachten neu hochladen.");
+    if (b) return b; throw new Error("Formular beschädigt");
+  }; })();
+/* PDF-Vorschau robuster: Schriften als Formen zeichnen (keine Geräteschriften nötig) und Zeichentabellen mitladen.
+   Verhindert „Hieroglyphen“ auf Geräten, deren Browser eingebettete PDF-Schriften nicht korrekt lädt (z. B. iPad/iPhone). */
+(function () {
+  const patch = () => { const L = window.pdfjsLib; if (!L || L.__eebPatch) return; const gd = L.getDocument.bind(L);
+    L.getDocument = o => gd(Object.assign({ cMapUrl: PDFJS + "cmaps/", cMapPacked: true, standardFontDataUrl: PDFJS + "standard_fonts/", disableFontFace: true, isEvalSupported: false }, o || {}, { disableFontFace: true }));
+    L.__eebPatch = true; };
+  const ls = loadScript; loadScript = async function (src) { const r = await ls(src); patch(); return r; }; patch();
+})();
+
 </script>
 </body></html>
