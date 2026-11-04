@@ -3146,7 +3146,7 @@ function akteCard(k0) {
     const fr = a.fristen.slice().sort((x, y) => (x.ok - y.ok) || ((x.datum || "9999") < (y.datum || "9999") ? -1 : 1));
     const fList = h("div", { class: "flist" }, fr.length ? fr.map(f => h("div", { class: "frow" + (f.ok ? " ok" : "") },
       h("button", { type: "button", class: "chk" + (f.ok ? " on" : ""), role: "checkbox", "aria-checked": String(!!f.ok), "aria-label": "Erledigt: " + f.t, onclick: async () => { await akteAendern(k.id, x => { const y = x.fristen.find(z => z.id === f.id); if (y) y.ok = !y.ok; }); draw(); } }, h("span", { class: "box" }, ic("check"))),
-      h("div", { class: "ft" }, h("b", null, f.t), h("div", { class: "chips" }, fristChip(f), f.notiz ? h("span", { class: "mut", style: "font-size:12.5px" }, f.notiz) : null), bearbEl(k, f)),
+      h("div", { class: "ft", "data-tid": f.art === "termin" ? f.id : null, "data-kid": k.id }, h("b", null, f.t), h("div", { class: "chips" }, fristChip(f), f.notiz ? h("span", { class: "mut", style: "font-size:12.5px" }, f.notiz) : null), bearbEl(k, f)),
       f.datum ? h("button", { type: "button", class: "fic", "aria-label": "In den Kalender", title: "In den Kalender", onclick: () => icsSpeichern(f.t + " " + f.datum, icsText(f.t + " – " + kName(k), f.datum, "", 0, kontaktText(k, f.notiz || ""), objAdr(k))) }, ic("cal", "s")) : null,
       h("button", { type: "button", class: "fic", "aria-label": "Frist löschen", onclick: async () => { await akteAendern(k.id, x => x.fristen = x.fristen.filter(z => z.id !== f.id)); draw(); } }, ic("trash", "s"))))
       : h("p", { class: "mut", style: "margin:4px 0" }, "Keine Fristen – z. B. Wiedervorlage oder Bewilligungszeitraum anlegen."));
@@ -6206,8 +6206,8 @@ function kalKonflikte(liste) {
   return k;
 }
 /** Prüfung beim Eintragen eines Termins */
-function kalPruefen(u, datum, zeit, dauer) {
-  const v = kalMin(zeit), l = kalEintraege(datum, datum).filter(x => x.u === u && x.tag === datum && (x.art === "ext" || x.art === "termin"));
+function kalPruefen(u, datum, zeit, dauer, ohneId) {
+  const v = kalMin(zeit), l = kalEintraege(datum, datum).filter(x => x.u === u && x.tag === datum && (x.art === "ext" || x.art === "termin") && !(ohneId && x.f && x.f.id === ohneId));
   if (v == null) return l.filter(x => x.art === "ext" || x.z);
   const b = v + (+dauer || 90); return l.filter(x => x.vonMin != null && x.vonMin < b && v < x.bisMin);
 }
@@ -6241,7 +6241,7 @@ function kalMonatKarte() {
     const merk = x => x.f && (x.f.merk || []).length ? h("div", { class: "kal-ml" }, x.f.merk.map(t => { const ok = (x.f.merkOk || []).includes(t);
       return h("button", { type: "button", class: "kal-mi" + (ok ? " ok" : ""), onclick: e => { e.stopPropagation(); kalMerkAbhaken(x.k, x.f, t); } }, ok ? "☑ " : "☐ ", t); })) : null;
     const eintrag = x => h("div", { class: "kal-ew" }, eintrag0(x), merk(x));
-    const eintrag0 = x => h(x.k ? "button" : "div", { class: "kal-e" + (konf.has(x) ? " konf" : ""), style: "--c:" + kalFarbe(x.u), onclick: x.k ? () => go("kunde", { id: x.k.id }) : null },
+    const eintrag0 = x => h(x.k ? "button" : "div", { class: "kal-e" + (konf.has(x) ? " konf" : ""), style: "--c:" + kalFarbe(x.u), onclick: x.k ? () => (x.art === "termin" && typeof termAnsicht === "function" ? termAnsicht(x.k, x.f) : go("kunde", { id: x.k.id })) : null },
       h("i", { class: "kal-dot" + (x.art === "ext" ? " ext" : x.art === "frist" ? " fr" : "") }),
       h("span", { class: "kal-z" }, x.z ? x.z + (x.bis ? "–" + x.bis : "") : x.art === "ext" ? "ganzt." : x.art === "frist" ? "Frist" : "—"),
       h("span", { class: "kal-tx" }, h("b", null, x.t), h("small", null, [zeigeName ? kalName(x.u).replace(" (ich)", "") : null, x.k ? kName(x.k) : null, x.art === "ext" ? "eigener Kalender" : null, x.f && x.f.ok ? "✓ wahrgenommen" : null, konf.has(x) ? "⚠ überschneidet sich" : null].filter(Boolean).join(" · "))));
@@ -6283,7 +6283,7 @@ wasStehtAn = function () {
     h("div", { class: "akh" }, h("h4", null, "Was steht an?"), h("span", { class: "mut" }, "nächste 30 Tage")),
     !S.kunden.length ? h("p", { class: "mut", style: "margin:4px 0" }, "Noch keine Kunden angelegt.")
     : fs.length ? fs.map(({ k, f }) => { const u = kalWer(k, f), z = kalZeit(f);
-        return h("button", { class: "wrow", style: team ? "box-shadow:inset 4px 0 0 " + kalFarbe(u) + ";padding-left:12px" : null, onclick: () => go("kunde", { id: k.id }) }, fristChip(f),
+        return h("button", { class: "wrow", style: team ? "box-shadow:inset 4px 0 0 " + kalFarbe(u) + ";padding-left:12px" : null, onclick: () => (f.art === "termin" && typeof termAnsicht === "function" ? termAnsicht(k, f) : go("kunde", { id: k.id })) }, fristChip(f),
           h("div", { class: "ft" }, h("b", null, f.t), h("span", null, [team ? kalName(u).replace(" (ich)", "") : null, kName(k), z && !(f.notiz || "").includes(z) ? z + " Uhr" : null, f.notiz || null, (f.merk || []).filter(t => !(f.merkOk || []).includes(t)).length ? "☐ " + (f.merk || []).filter(t => !(f.merkOk || []).includes(t)).join(", ") : null].filter(Boolean).join(" · "))), ic("chev", "chev")); })
       : h("p", { class: "mut", style: "margin:4px 0" }, "Keine Fristen in den nächsten 30 Tagen." + (ohne ? " " + ohne + " Frist(en) ohne Datum." : "")));
 };
@@ -6295,9 +6295,9 @@ function kalWerFeld(k, st) {
   return F.s("wer", "Für wen", () => kalLeute().map(p => [p.uid, p.name]), { re: 1 });
 }
 function kalHinweis(st) {
-  const u = st.wer || kalIch(), l = st.datum ? kalPruefen(u, st.datum, st.zeit, st.dauer) : [];
+  const u = st.wer || kalIch(), l = st.datum ? kalPruefen(u, st.datum, st.zeit, st.dauer, st._fid) : [];
   const nm = u === kalIch() ? "Du" : kalName(u);
-  const tag = st.datum ? kalEintraege(st.datum, st.datum).filter(x => x.u === u) : [];
+  const tag = st.datum ? kalEintraege(st.datum, st.datum).filter(x => x.u === u && !(st._fid && x.f && x.f.id === st._fid)) : [];
   if (!tag.length) return st.datum ? h("p", { class: "kal-frei" }, "✓ " + nm + (nm === "Du" ? " hast" : " hat") + " am " + datDE(st.datum) + " noch nichts eingetragen.") : null;
   return h("div", { class: "kal-hw" + (l.length ? " konf" : "") }, h("b", null, (l.length ? "⚠ Überschneidung – " : "") + nm + " am " + datDE(st.datum) + ":"),
     tag.map(x => h("div", null, "• " + kalZeile(x) + (x.k ? " (" + kName(x.k) + ")" : ""))));
@@ -6938,6 +6938,253 @@ geo = function (d) {
 .gf-skizze{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px;border-radius:12px;background:var(--soft);color:var(--g)}.gf-skizze p{margin:0;color:var(--ink2);font-size:13.5px;line-height:1.45}
 .gf-h{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:15px}
 `; document.head.append(s); })();
+
+/* ===== Termine ansehen und bearbeiten =====
+   termAnsicht(k, f): alle Angaben eines Termins, Merkpunkte abhaken, Route/Anruf, Bearbeiten, Löschen.
+   termSheet(k, datum, f): ohne f neuer Termin, mit f wird der vorhandene Termin geändert (gleiche ID). */
+const termZeitText = f => { const z = kalZeit(f), d = +f.dauer || 0; if (!z) return "ganztägig / ohne Uhrzeit"; const m = kalMin(z) + (d || 90);
+  return z + " – " + String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0") + " Uhr" + (d ? " (" + (d % 60 ? d + " Min." : d / 60 + " Std.") + ")" : ""); };
+const termNotiz = f => String(f.notiz || "").replace(/^\d{1,2}:\d{2} Uhr( · )?/, "").trim();
+function termAktuell(k, f) { const kk = S.kunden.find(x => x.id === k.id) || k; return { k: kk, f: ((kk.akte && kk.akte.fristen) || []).find(x => x.id === f.id) || f }; }
+
+function termAnsicht(k0, f0) {
+  const body = h("div");
+  const draw = () => {
+    const { k, f } = termAktuell(k0, f0), wer = kalWer(k, f), team = kalLeute().length > 1, tel = String(k.tel || "").replace(/[^\d+]/g, ""), adr = objAdr(k);
+    const vergangen = f.datum && f.datum < heute(), merk = f.merk || [], ok = f.merkOk || [];
+    const zeile = (l, v) => v ? h("div", { class: "ta-z" }, h("span", null, l), h("b", null, v)) : null;
+    rc(body,
+      h("div", { class: "ta-kopf", style: "--c:" + kalFarbe(wer) }, h("i"), h("div", null, h("b", null, f.t), h("span", null, kName(k)))),
+      h("div", { class: "ta-box" },
+        zeile("Datum", f.datum ? new Date(f.datum + "T12:00").toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "ohne Datum"),
+        zeile("Uhrzeit", termZeitText(f)),
+        team ? zeile("Für", kalName(wer).replace(" (ich)", "") + (wer === kalIch() ? " (ich)" : "")) : null,
+        zeile("Status", f.ok ? "✓ wahrgenommen" + (f.wahrgenommen ? " (gebucht am " + datDE(f.wahrgenommen) + ")" : "") : vergangen ? "vergangen – wird automatisch als wahrgenommen gebucht" : "geplant"),
+        zeile("Objekt", adr), zeile("Telefon", k.tel)),
+      termNotiz(f) ? h("div", { class: "ta-notiz" }, h("span", null, "Notizen"), h("p", null, termNotiz(f))) : null,
+      merk.length ? h("div", { class: "ta-merk" }, h("span", null, "Woran denken? (" + ok.filter(t => merk.includes(t)).length + " von " + merk.length + " erledigt)"),
+        merk.map(t => { const on = ok.includes(t); return h("button", { type: "button", class: "kal-mi" + (on ? " ok" : ""), onclick: async () => { await kalMerkAbhaken(k, f, t); draw(); } }, on ? "☑ " : "☐ ", t); })) : null,
+      h("div", { class: "btnrow", style: "flex-wrap:wrap;margin-top:12px" },
+        adr ? h("a", { class: "btn sec", href: "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(adr), target: "_blank", rel: "noopener", style: "text-decoration:none" }, ic("pin", "s"), "Route") : null,
+        tel ? h("a", { class: "btn sec", href: "tel:" + tel, style: "text-decoration:none" }, ic("phone", "s"), "Anrufen") : null,
+        h("button", { class: "btn sec", onclick: () => { schliessen(); go("kunde", { id: k.id }); } }, ic("users", "s"), "Kundenakte"),
+        f.datum ? h("button", { class: "btn sec", onclick: () => icsSpeichern("Termin " + kName(k) + " " + f.datum, icsText(f.t, f.datum, kalZeit(f), +f.dauer || 90, kontaktText(k, [termNotiz(f), merk.length ? "Denken an: " + merk.join(", ") : ""].filter(Boolean).join("\n")), adr)) }, ic("cal", "s"), "In meinen Kalender") : null),
+      h("div", { style: "margin-top:10px" }, h("button", { class: "btn red wide", onclick: () => ask("Termin löschen?", "„" + f.t + "“ am " + datDE(f.datum) + " wird gelöscht." + (f.ok ? " Die dafür automatisch gebuchte Arbeitszeit wird ebenfalls entfernt." : ""), "Löschen", async () => {
+        await akteAendern(k.id, a => { a.fristen = a.fristen.filter(x => x.id !== f.id); a.zeiten = (a.zeiten || []).filter(z => z.termin !== f.id); }); toast("Termin gelöscht"); schliessen(); render(); }, true) }, ic("trash", "s"), "Termin löschen")));
+  };
+  let schliessen = () => { document.querySelectorAll(".scrim").forEach(s => { if (s.contains(body)) s.remove(); }); };
+  draw();
+  sheet("Termin", body, [{ t: "Schließen", cls: "sec", fn: () => { render(); } }, { t: "Bearbeiten", fn: () => { const { k, f } = termAktuell(k0, f0); setTimeout(() => termSheet(k, f.datum, f), 250); } }]);
+}
+
+termSheet = function (k, datum0, f0) {
+  const neu = !f0;
+  const st = neu ? { thema: "vot", datum: datum0 || plusTage(heute(), 7), zeit: "10:00", dauer: "120", titel: "Vor-Ort-Termin / Datenaufnahme – " + kName(k) }
+    : { thema: "eigen", titel: f0.t, datum: f0.datum || heute(), zeit: kalZeit(f0) || "", dauer: String(f0.dauer || 90), notizText: termNotiz(f0), wer: kalWer(k, f0), _bearb: 1, _fid: f0.id };
+  const body = h("div");
+  const draw = () => rc(body, formView([{ t: "Termin", f: [neu ? F.s("thema", "Thema", terminThemen, { re: 1, after: d => { const v = terminThemen().find(x => x[0] === d.thema), t0 = TERMIN_THEMEN.find(x => x[0] === d.thema);
+      d.titel = d.thema === "eigen" ? "" : v[1] + " – " + kName(k); if (t0) d.dauer = String(t0[2]); } }) : null,
+    F.t("titel", "Titel", { full: 1, ph: () => "z. B. Termin mit Schornsteinfeger" }), kalWerFeld(k, st), F.d("datum", "Datum", { re: 1 }), F.t("zeit", "Uhrzeit", { ph: "10:00" }), F.n("dauer", "Dauer", "Min."),
+    F.a("notizText", "Notizen", { full: 1, ph: "z. B. Zugang über Hof, Kunde hat Pläne bereit" }),
+    neu && st.thema === "eigen" ? F.c("merken", "Dieses Thema in die Auswahl aufnehmen") : null].filter(Boolean) }], st, { onChange: f => { if (f && f.re) draw(); else if (hw) { const n = kalHinweis(st); hw.replaceWith(n || (hw = h("span"))); if (n) hw = n; } } }), merkBox, hw = kalHinweis(st) || h("span"));
+  let hw = null; st.merk = neu ? [] : (f0.merk || []).slice(); const merkBox = kalMerkBox(st); draw();
+  const fuerMich = () => (st.wer || kalIch()) === kalIch();
+  sheet(neu ? "Termin eintragen" : "Termin bearbeiten", body, [{ t: "Abbrechen", cls: "sec", fn: () => { } }, { t: "Speichern", fn: async () => {
+    if (!String(st.titel || "").trim()) { toast("Bitte ein Thema wählen oder einen Titel eingeben."); return false; }
+    const z = /^\d{1,2}:\d{2}$/.test(st.zeit) ? st.zeit.padStart(5, "0") : "", konf = kalPruefen(st.wer || kalIch(), st.datum, z, st.dauer, neu ? null : f0.id);
+    if (konf.length && !st._ok) { st._ok = true; toast("⚠ Überschneidung mit „" + kalZeile(konf[0]).trim() + "“. Nochmal auf Speichern tippen, um trotzdem zu speichern."); return false; }
+    if (neu && st.thema === "eigen" && st.merken) { const t = st.titel.replace(/\s+–\s+.*$/, "").trim(), L = S.profil.terminThemen ||= []; if (t && !L.includes(t)) { L.push(t); Store.saveProfil(); } }
+    const daten = { t: st.titel.trim(), datum: st.datum, zeit: z, dauer: num(st.dauer) || 90, wer: st.wer || kalIch(), notiz: [z ? z + " Uhr" : "", String(st.notizText || "").trim()].filter(Boolean).join(" · "), merk: st.merk.slice() };
+    if (neu) await akteAendern(k.id, a => { a.fristen.push(Object.assign({ id: uid(), art: "termin", ok: false }, daten)); if (a.status === "anfrage") { a.status = "termin"; a.verlauf.termin = heute(); } });
+    else await akteAendern(k.id, a => { const f = a.fristen.find(x => x.id === f0.id); if (!f) return;
+      Object.assign(f, daten); f.merkOk = (f.merkOk || []).filter(t => daten.merk.includes(t));
+      if (f.ok && f.datum >= heute()) { f.ok = false; delete f.wahrgenommen; a.zeiten = (a.zeiten || []).filter(x => x.termin !== f.id); }   // in die Zukunft verschoben → wieder offen
+      const zt = (a.zeiten || []).find(x => x.termin === f.id); if (zt) { zt.datum = f.datum; zt.std = maZahl(daten.dauer / 60, 2); zt.wer = daten.wer; zt.notiz = (z ? z + " Uhr · " : "") + "automatisch aus Termin"; } });
+    if (neu && fuerMich() && !kalPlugin()) { try { await icsSpeichern("Termin " + kName(k) + " " + st.datum, icsText(st.titel, st.datum, z, num(st.dauer) || 90, kontaktText(k, [st.notizText, st.merk.length ? "Denken an: " + st.merk.join(", ") : ""].filter(Boolean).join("\n")), objAdr(k))); } catch (e) { } }
+    else if (fuerMich() && kalPlugin()) kalSync(true);
+    toast(neu ? (fuerMich() ? "Termin eingetragen" : "Termin für " + kalName(st.wer) + " eingetragen") : "Termin geändert"); render(); } }]);
+};
+
+/* Kundenakte: Termine in der Fristenliste antippbar */
+document.addEventListener("click", e => {
+  const ft = e.target.closest && e.target.closest(".frow .ft[data-tid]"); if (!ft) return;
+  const k = S.kunden.find(x => x.id === ft.dataset.kid), f = k && ((k.akte && k.akte.fristen) || []).find(x => x.id === ft.dataset.tid); if (f) termAnsicht(k, f);
+});
+(function () { const s = document.createElement("style"); s.textContent = `
+.ta-kopf{display:flex;gap:10px;align-items:flex-start;padding:4px 0 10px}.ta-kopf i{flex:none;width:12px;height:12px;border-radius:50%;background:var(--c);margin-top:6px}
+.ta-kopf b{display:block;font-size:17px;line-height:1.3}.ta-kopf span{color:var(--ink3);font-size:14px}
+.ta-box{background:var(--soft);border-radius:12px;padding:4px 12px}.ta-z{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.ta-z:last-child{border-bottom:0}
+.ta-z span{flex:none;width:76px;color:var(--ink3);font-size:13.5px}.ta-z b{font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
+.ta-notiz,.ta-merk{margin-top:12px}.ta-notiz span,.ta-merk>span{display:block;color:var(--ink3);font-size:13px;margin-bottom:4px}.ta-notiz p{margin:0;white-space:pre-wrap;font-size:14.5px}
+.ta-merk{display:flex;flex-direction:column}.ta-merk .kal-mi{font-size:14.5px;padding:6px 0}
+.frow .ft[data-tid]{cursor:pointer}.frow .ft[data-tid] b{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+`; document.head.append(s); })();
+
+/* ===== Zu zeichnen: Projekte für den (externen) Zeichner =====
+   Jede neue Datenaufnahme iSFP / Bedarfsausweis kommt automatisch mit „Noch nicht gezeichnet“ auf die Liste.
+   Status: offen → gezeichnet → fertig. Ändern darf, wer das Recht „Zeichnungen“ hat (Inhaber immer).
+   Gespeichert beim Kunden: akte.zeichnen = [{ vid, typ, titel, st, erstellt, geaendert, von }]. */
+const ZEICH_TYPEN = ["isfp", "ea_b"];
+const ZEICH_ST = [["offen", "Noch nicht gezeichnet"], ["bearbeitung", "In Bearbeitung"], ["gezeichnet", "Gezeichnet"], ["fertig", "Fertig"]];
+const ZEICH = { fertigZeigen: false };
+const zeichDarf = () => !teamAktiv() || darf("zeich");
+const zeichTypName = t => ({ isfp: "iSFP", ea_b: "Bedarfsausweis" })[t] || (TYPEN[t] && TYPEN[t].name) || t;
+
+// Recht „Zeichnungen“ und Vorlage „Zeichner“
+(function () {
+  if (typeof TEAM_RECHTE !== "undefined") TEAM_RECHTE.push(["Zeichnungen", [["zeich", "Zeichnungs-Status ändern (Liste „Zu zeichnen“)", "Für den Zeichner: Projekte als gezeichnet / fertig markieren"]]]);
+  if (typeof TEAM_VORL !== "undefined") { TEAM_VORL.Berater.zeich = false; TEAM_VORL["Büro"].zeich = true; TEAM_VORL.Alles.zeich = true;
+    TEAM_VORL.Zeichner = { tAlle: false, kAlle: true, kNeu: false, kDel: false, aufn: true, voll: false, hott: true, sm: false, angSehen: false, angSchr: false, mahn: false, bwa: false, firma: false, export: false, zeich: true }; }
+})();
+
+function zeichListe() {
+  const out = [];
+  for (const k of S.kunden || []) for (const z of ((k.akte && k.akte.zeichnen) || [])) out.push({ k, z });
+  const rang = { offen: 0, bearbeitung: 1, gezeichnet: 2, fertig: 3 };
+  return out.sort((a, b) => (rang[a.z.st] - rang[b.z.st]) || ((a.z.erstellt || 0) - (b.z.erstellt || 0)));
+}
+async function zeichSetzen(kid, vid, st, extra) {
+  await akteAendern(kid, a => { a.zeichnen ||= []; let z = a.zeichnen.find(x => x.vid === vid);
+    if (!z) { z = Object.assign({ vid, erstellt: Date.now() }, extra || {}); a.zeichnen.push(z); }
+    z.st = st; z.geaendert = Date.now(); z.von = S.uid || ""; z.verlauf ||= {}; z.verlauf[st] = { t: z.geaendert, von: z.von };
+    if (st === "offen") z.verlauf = { offen: z.verlauf.offen };
+    if (st === "bearbeitung") z.bearb = (extra && extra.bearb) || z.bearb || S.uid || ""; else if (st === "offen") delete z.bearb; });
+}
+/** Wer bearbeitet? Inhaber wählt aus dem Team, alle anderen übernehmen selbst */
+function zeichBearbeiter(k, z, nachher) {
+  const leute = kalLeute();
+  if (!teamAktiv() || leute.length < 2 || !TEAM.owner) return zeichSetzen(k.id, z.vid, "bearbeitung", Object.assign({ bearb: S.uid }, z.typ ? { typ: z.typ, erstellt: z.erstellt || Date.now() } : {})).then(() => { toast("In Bearbeitung"); nachher && nachher(); });
+  const body = h("div", null, h("p", { class: "sub", style: "margin-top:0" }, "Wer bearbeitet " + kName(k) + " (" + zeichTypName(z.typ) + ")?"),
+    h("div", { class: "zb-l" }, leute.map(p => h("button", { type: "button", class: "zb-p" + (z.bearb === p.uid ? " on" : ""), style: "--c:" + p.farbe, onclick: async () => {
+      document.querySelectorAll(".scrim").forEach(s => { if (s.contains(body)) s.remove(); });
+      await zeichSetzen(k.id, z.vid, "bearbeitung", Object.assign({ bearb: p.uid }, z.typ ? { typ: z.typ, erstellt: z.erstellt || Date.now() } : {}));
+      await akteAendern(k.id, a => { const x = (a.zeichnen || []).find(y => y.vid === z.vid); if (x) x.bearb = p.uid; });
+      toast("In Bearbeitung: " + p.name.replace(" (ich)", "")); nachher && nachher(); } }, h("i"), p.name))));
+  sheet("In Bearbeitung", body, [{ t: "Abbrechen", cls: "sec", fn: () => { } }]);
+}
+/** Auswahl mit vier Stufen */
+function zeichWahl(k, z, nachher) {
+  const darfs = zeichDarf(), farbe = z.bearb ? kalFarbe(z.bearb) : "";
+  return h("div", { class: "zw", role: "radiogroup", "aria-label": "Zeichnungs-Status" }, ZEICH_ST.map(([v, l], i) => h("button", { type: "button", role: "radio", "aria-checked": String(z.st === v), class: "zw-" + v + (z.st === v ? " on" : ""), disabled: !darfs && z.st !== v,
+    style: v === "bearbeitung" && z.st === v && farbe ? "--c:" + farbe : null,
+    onclick: async e => { e.stopPropagation(); if (!darfs) { teamGesperrt("Zeichnungs-Status"); return; }
+      if (v === "bearbeitung") { zeichBearbeiter(k, z, nachher); return; }
+      if (z.st === v) return; await zeichSetzen(k.id, z.vid, v); toast(l); nachher && nachher(); } },
+    h("b", null, String(i + 1)), v === "bearbeitung" && z.st === v && z.bearb && teamAktiv() ? l + " · " + kalName(z.bearb).replace(" (ich)", "") : l)), zeichVerlauf(z));
+}
+/** Verlauf: wann wurde welcher Knopf gedrückt (und von wem) */
+function zeichVerlauf(z) {
+  const V = Object.assign({}, z.verlauf || {}); if (!Object.keys(V).length && z.geaendert && z.st) V[z.st] = { t: z.geaendert, von: z.von };
+  const zeilen = ZEICH_ST.filter(([s]) => V[s] && V[s].t).map(([s, l]) => { const x = V[s], d = new Date(x.t);
+    return h("div", { class: "zv-z" + (s === z.st ? " akt" : "") }, h("span", null, l), h("b", null, datDE(kalTag(d)) + ", " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + " Uhr"),
+      teamAktiv() && x.von ? h("small", null, kalName(x.von).replace(" (ich)", "")) : null); });
+  return zeilen.length ? h("div", { class: "zv" }, zeilen) : null;
+}
+/** Datenaufnahme öffnen (vorher laden, falls die Akte noch nicht offen war) */
+async function zeichOeffnen(k, z) {
+  let v = (S.subKid === k.id ? S.vorg : []).find(x => x.id === z.vid);
+  if (!v) { try { if (S.mode === "cloud") { const d = await Store.kCol().doc(k.id).collection("vorgaenge").doc(z.vid).get(); if (d.exists) v = Object.assign({ id: z.vid }, clone(d.data())); }
+      else v = clone(((local.data.vorg || {})[k.id] || {})[z.vid] || null); } catch (e) { console.warn(e); } }
+  if (!v) { ask("Datenaufnahme nicht gefunden", "Die Datenaufnahme zu " + kName(k) + " gibt es nicht mehr. Von der Liste „Zu zeichnen“ entfernen?", "Entfernen", async () => { await akteAendern(k.id, a => { a.zeichnen = (a.zeichnen || []).filter(x => x.vid !== z.vid); }); render(); }, true); return; }
+  go("vorgang", { kid: k.id, v });
+}
+/* ---------- Karte unter „Was steht an?“ ---------- */
+function zeichKarte() {
+  const box = h("section", { class: "card fsec zk" });
+  const draw = () => {
+    const alle = zeichListe(), offen = alle.filter(x => x.z.st !== "fertig"), fertig = alle.filter(x => x.z.st === "fertig");
+    const n = s => alle.filter(x => x.z.st === s).length;
+    const zeile = ({ k, z }) => h("div", { class: "zk-e zk-" + z.st, style: z.st === "bearbeitung" && z.bearb ? "--c:" + kalFarbe(z.bearb) : null },
+      h("button", { type: "button", class: "zk-t", onclick: () => zeichOeffnen(k, z) },
+        h("b", null, kName(k)), h("span", null, [zeichTypName(z.typ), objAdr(k), "aufgenommen " + datDE(kalTag(new Date(z.erstellt || Date.now())))].filter(Boolean).join(" · ")),
+        z.st === "bearbeitung" && z.bearb ? h("small", { class: "zk-bp" }, h("i"), "In Bearbeitung von " + kalName(z.bearb).replace(" (ich)", "") + " seit " + datDE(kalTag(new Date(z.geaendert || Date.now()))))
+        : z.geaendert && z.von && teamAktiv() && z.st !== "offen" ? h("small", null, ZEICH_ST.find(s => s[0] === z.st)[1] + " von " + kalName(z.von).replace(" (ich)", "") + " am " + datDE(kalTag(new Date(z.geaendert)))) : null),
+      zeichWahl(k, z, () => render()));
+    rc(box, h("div", { class: "akh" }, h("h4", null, "Zu zeichnen"), h("span", { class: "mut" }, n("offen") + " offen · " + n("bearbeitung") + " in Bearb. · " + n("gezeichnet") + " gezeichnet")),
+      !zeichDarf() && teamAktiv() ? h("p", { class: "mut", style: "margin:0 0 6px;font-size:12.5px" }, "Nur ansehen – den Status ändert der Zeichner bzw. der Inhaber.") : null,
+      offen.length ? offen.map(zeile) : h("p", { class: "mut", style: "margin:4px 0" }, alle.length ? "Alles gezeichnet." : "Keine Projekte. Neue Datenaufnahmen für iSFP und Bedarfsausweis erscheinen hier automatisch."),
+      fertig.length ? h("button", { type: "button", class: "linkbtn", style: "margin-top:8px", onclick: () => { ZEICH.fertigZeigen = !ZEICH.fertigZeigen; draw(); } }, (ZEICH.fertigZeigen ? "Fertige ausblenden" : "Fertige anzeigen") + " (" + fertig.length + ")") : null,
+      ZEICH.fertigZeigen ? fertig.map(zeile) : null);
+  };
+  draw(); return box;
+}
+(function () { const w = wasStehtAn;
+  wasStehtAn = function () { const a = w(), f = document.createDocumentFragment(); if (a) f.append(a); if ((S.kunden || []).length) f.append(zeichKarte()); return f; }; })();
+
+/* ---------- Neue Datenaufnahme iSFP / Bedarfsausweis → automatisch auf die Liste ---------- */
+(function () { const sv = Store.saveVorgang.bind(Store), dv = Store.delVorgang.bind(Store);
+  Store.saveVorgang = async function (kid, v) { const r = await sv(kid, v);
+    try { if (v && ZEICH_TYPEN.includes(v.typ)) { const k = S.kunden.find(x => x.id === kid), L = (k && k.akte && k.akte.zeichnen) || [];
+      if (k && !L.some(z => z.vid === v.id)) await zeichSetzen(kid, v.id, "offen", { typ: v.typ, titel: v.titel || TYPEN[v.typ].name, erstellt: v.created || Date.now() }); } } catch (e) { console.warn("Zeichenliste", e); }
+    return r; };
+  Store.delVorgang = async function (kid, v) { const r = await dv(kid, v);
+    try { const k = S.kunden.find(x => x.id === kid); if (k && ((k.akte && k.akte.zeichnen) || []).some(z => z.vid === v.id)) await akteAendern(kid, a => { a.zeichnen = (a.zeichnen || []).filter(z => z.vid !== v.id); }); } catch (e) { }
+    return r; }; })();
+
+/* ---------- Im Erfassungsbogen: Status anzeigen und umstellen ---------- */
+(function () { const vv = vVorgang;
+  vVorgang = function (v, p) { vv(v, p);
+    try { const k = S.kunden.find(x => x.id === p.kid), x = findV(p); if (!k || !x || !ZEICH_TYPEN.includes(x.typ)) return;
+      const z = ((k.akte && k.akte.zeichnen) || []).find(y => y.vid === x.id) || { vid: x.id, typ: x.typ, st: "" };
+      const card = h("section", { class: "card fsec" }, h("h4", null, "Zeichnung"), h("p", { class: "sub" }, z.st ? "Stand für den Zeichner – erscheint auf der Startseite unter „Zu zeichnen“." : "Dieses Projekt steht noch nicht auf der Liste „Zu zeichnen“. Status wählen, um es aufzunehmen."),
+        zeichWahl(k, Object.assign({}, z, { typ: x.typ }), () => render()));
+      if (!z.st) card.querySelectorAll(".zw button").forEach((b, i) => { b.disabled = !zeichDarf(); b.onclick = async e => { e.stopPropagation(); if (!zeichDarf()) return;
+        await zeichSetzen(k.id, x.id, ZEICH_ST[i][0], { typ: x.typ, titel: x.titel || TYPEN[x.typ].name, erstellt: x.created || Date.now() }); toast(ZEICH_ST[i][1]); render(); }; });
+      const hero = v.querySelector(".hero"); if (hero) hero.after(card); else v.prepend(card);
+    } catch (e) { console.warn("Zeichnung", e); }
+  }; })();
+(function () { const s = document.createElement("style"); s.textContent = `
+.zk .akh{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.zk h4{margin:0 0 8px;white-space:nowrap}.zk .akh .mut{text-align:right;font-size:12.5px}
+.zk-e{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--card)}
+.zk-e.zk-offen{box-shadow:inset 4px 0 0 #dc2626}.zk-e.zk-gezeichnet{box-shadow:inset 4px 0 0 #d97706}.zk-e.zk-fertig{box-shadow:inset 4px 0 0 #16a34a;opacity:.8}
+.zk-t{display:flex;flex-direction:column;align-items:flex-start;width:100%;border:0;background:none;padding:0 0 8px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.zk-t b{font-size:15px}.zk-t span{font-size:13px;color:var(--ink3)}.zk-t small{font-size:12px;color:var(--ink3);margin-top:2px}
+.zw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}@media(min-width:560px){.zw{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.zw button{display:flex;align-items:center;justify-content:center;gap:5px;border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:7px 4px;font:inherit;font-size:12.5px;line-height:1.2;color:var(--ink2);cursor:pointer;text-align:center}
+.zw button b{flex:none;width:18px;height:18px;border-radius:50%;background:var(--soft);font-size:11px;display:grid;place-items:center}
+.zw button:disabled{opacity:.45;cursor:default}
+.zw .zw-offen.on{background:#fee2e2;border-color:#dc2626;color:#991b1b;font-weight:700}.zw .zw-gezeichnet.on{background:#fef3c7;border-color:#d97706;color:#92400e;font-weight:700}.zw .zw-fertig.on{background:#dcfce7;border-color:#16a34a;color:#166534;font-weight:700}
+.zw .on b{background:#fff}
+.zv{grid-column:1/-1;margin-top:6px;padding:6px 8px;border-radius:8px;background:var(--soft);display:flex;flex-direction:column;gap:2px}
+.zv-z{display:flex;flex-wrap:wrap;column-gap:8px;align-items:baseline;font-size:12.5px;color:var(--ink3);padding:1px 0}.zv-z span{flex:none;width:128px}.zv-z b{font-weight:600;color:var(--ink2);white-space:nowrap}.zv-z.akt span,.zv-z.akt b{color:var(--ink);font-weight:700}.zv-z small{margin-left:auto}
+.zw .zw-bearbeitung.on{background:color-mix(in srgb,var(--c,#2563eb) 18%,#fff);border-color:var(--c,#2563eb);color:var(--ink);font-weight:700}
+.zk-e.zk-bearbeitung{box-shadow:inset 5px 0 0 var(--c,#2563eb);background:color-mix(in srgb,var(--c,#2563eb) 9%,var(--card))}
+.zk-bp{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink2)!important}.zk-bp i{width:10px;height:10px;border-radius:50%;background:var(--c,#2563eb)}
+.zb-l{display:flex;flex-direction:column;gap:6px}.zb-p{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:12px;font:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
+.zb-p i{width:14px;height:14px;border-radius:50%;background:var(--c)}.zb-p.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--card));font-weight:700}
+`; document.head.append(s); })();
+
+/* ===== Erfassungsbögen: „Sonstiges …“ in jedem Auswahlfeld =====
+   Jede Auswahl (Liste oder Knöpfe) bekommt die Möglichkeit „Sonstiges …“ mit einem Feld zum freien Eintragen.
+   Gespeichert wird der eingetragene Text direkt im Feld – er erscheint so auch im PDF. Ja/Nein-Fragen und
+   Felder, an denen Berechnungen hängen (SONST_AUS), bleiben unverändert. */
+const SONST_TYPEN = ["isfp", "ea_b", "ea_v", "em", "heizung", "antrag", "check"];
+const SONST_AUS = new Set([]);   // Felder, bei denen freie Werte Berechnungen stören würden (per Test ermittelt)
+const sonstJaNein = (f, d) => { try { const v = optsOf(f, d).map(o => String(o[0]).toLowerCase()); return v.length <= 3 && v.every(x => ["ja", "nein", "", "na", "teil", "unbekannt", "j", "n"].includes(x)); } catch (e) { return true; } };
+(function () {
+  const markiert = new Set();
+  for (const t of SONST_TYPEN) { const T = TYPEN[t]; if (!T || !Array.isArray(T.sec)) continue;
+    for (const s of T.sec) for (const f of s.f || []) if ((f.ty === "sel" || f.ty === "seg") && f.k && !/^g_/.test(f.k)) { f.sonst = 1; markiert.add(f.k); } }
+  const orig = field;
+  field = function (f, data, ch) {
+    if (!f.sonst || SONST_AUS.has(f.k) || sonstJaNein(f, data)) return orig(f, data, ch);
+    const flag = "__s_" + f.k, eigen = d => optsOf(f, d).find(o => /^(sonstig|andere)/i.test(String(o[1]))), basis = d => optsOf(f, d).filter(o => o !== eigen(d)), vals = () => basis(data).map(o => o[0]);
+    const istSonst = () => !!data[flag] || (eigen(data) && data[f.k] === eigen(data)[0]) || (data[f.k] != null && data[f.k] !== "" && !vals().includes(data[f.k]));
+    const proxy = new Proxy(data, {
+      get(t, p) { if (p === f.k && istSonst()) return "__sonst"; return t[p]; },
+      set(t, p, v) { if (p !== f.k) { t[p] = v; return true; }
+        if (v === "__sonst") { t[flag] = 1; if (vals().includes(t[f.k])) t[f.k] = ""; } else { delete t[flag]; t[f.k] = v; } return true; } });
+    const f2 = Object.assign({}, f, { opts: d => [...basis(d), ["__sonst", "Sonstiges …"]], re: 1,
+      after: f.after ? d => { if (vals().includes(d[f.k])) { try { f.after(d); } catch (e) { console.warn(e); } } } : undefined });
+    const el = orig(f2, proxy, ch);
+    if (istSonst()) { const frei = vals().includes(data[f.k]) || (eigen(data) && data[f.k] === eigen(data)[0]) ? "" : (data[f.k] || "");
+      const inp = h("input", { class: "inp sonst-inp", placeholder: "Sonstiges – bitte eintragen", value: frei, "aria-label": f.l + " – Sonstiges",
+        oninput: e => { const v = e.target.value; data[f.k] = v; if (v) delete data[flag]; else data[flag] = 1; ch(Object.assign({}, f, { re: 0 })); } });
+      el.append(inp); if (!frei) setTimeout(() => inp.focus(), 30); }
+    return el;
+  };
+})();
+(function () { const s = document.createElement("style"); s.textContent = `.sonst-inp{margin-top:6px;border-style:dashed}`; document.head.append(s); })();
 
 </script>
 </body></html>
