@@ -2166,7 +2166,7 @@ function modeBanner() {
 
 /* ============ Ansichten ============ */
 function vKunden(v) {
-  const list = h("div"), dash = h("div");
+  const list = h("div"), dash = h("div"), chipBox = h("div"), kundenKopf = h("div", { class: "akh" });
   const offen = () => S.kunden.filter(k => !(k.stat && k.stat.vollmacht)).length;
   const statBox = h("div", { class: "stats" });
   const drawStats = () => rc(statBox, 
@@ -2175,9 +2175,9 @@ function vKunden(v) {
     h("div", { class: "stat" }, h("b", null, offen()), h("span", null, "ohne Vollmacht")),
     h("div", { class: "stat" + (alleFristen().some(x => x.f.datum && tageBis(x.f.datum) < 0) ? " bad" : "") }, h("b", null, alleFristen().filter(x => x.f.datum && tageBis(x.f.datum) <= 14).length), h("span", null, "Fristen ≤ 14 Tage")));
   const draw = () => {
-    drawStats();
+    drawStats(); rc(kundenKopf, h("span", { class: "s3d-ic" }, ic("users", "s")), h("h4", null, "Kunden"), h("span", { class: "mut" }, S.kunden.length + (S.kunden.length === 1 ? " Kunde" : " Kunden")));
     const q = S.q.toLowerCase();
-    rc(dash, wasStehtAn(), S.kunden.length ? h("div", { class: "chips stf" }, [["", "Alle"], ...STATUS].map(([v, l]) => { const n = v ? S.kunden.filter(k => statusOf(k) === v).length : S.kunden.length; if (v && !n) return null;
+    rc(dash, wasStehtAn()); rc(chipBox, S.kunden.length ? h("div", { class: "chips stf" }, [["", "Alle"], ...STATUS].map(([v, l]) => { const n = v ? S.kunden.filter(k => statusOf(k) === v).length : S.kunden.length; if (v && !n) return null;
       return h("button", { class: "chip" + ((S.stF || "") === v ? " ok" : " gray"), onclick: () => { S.stF = v; draw(); } }, l + " " + n); })) : null);
     const ks = S.kunden.filter(k => (!S.stF || statusOf(k) === S.stF) && (!q || [kName(k), k.ort, k.strasse, k.objOrt, k.firma].join(" ").toLowerCase().includes(q))).sort((a, b) => (b.updated || 0) - (a.updated || 0));
     if (S.loading) { rc(list, h("div", { class: "card empty" }, h("p", { style: "margin:0" }, "Kunden werden geladen …"))); return; }
@@ -2193,9 +2193,9 @@ function vKunden(v) {
   };
   ap(v, navBar("Kunden", { actions: [S.sample ? h("button", { onclick: () => kiSheet(), "aria-label": "KI-Assistent", title: "KI-Assistent" }, ic("ki")) : null, h("button", { onclick: tourMenue, "aria-label": "Hilfe & Tutorials", title: "Hilfe & Tutorials" }, ic("info")), h("button", { onclick: () => go("kundeEdit", {}), "aria-label": "Kunde anlegen" }, ic("plus"))] }),
     h("div", { class: "hero home" }, h("div", { class: "hlogo" }, logo(), h("small", { class: "hname" }, "Mitarbeiter: " + (typeof ichName === "function" ? ichName() : S.profil.name))), h("div", { class: "ht" }, h("h2", null, "EEBerater"), h("p", null, [S.profil.logo || firmTeile()[1] ? null : S.profil.firma, (typeof ichNr === "function" ? ichNr() : S.profil.eeeNr) ? "Berater-Nr. " + (typeof ichNr === "function" ? ichNr() : S.profil.eeeNr) : "Energieeffizienz-Experte"].filter(Boolean).join(" · ")))),
-    modeBanner(), tourHinweis(), S.sample ? h("button", { type: "button", class: "kibar", onclick: () => kiSheet() }, ic("ki"), h("span", null, "KI-Assistent: Kunde anlegen, Termin eintragen, Beleg oder Typenschild fotografieren …")) : null, statBox, dash,
+    modeBanner(), tourHinweis(), S.sample ? h("button", { type: "button", class: "kibar", onclick: () => kiSheet() }, ic("ki"), h("span", null, "KI-Assistent: Kunde anlegen, Termin eintragen, Beleg oder Typenschild fotografieren …")) : null, statBox, dash, h("section", { class: "card fsec s3d kunden3d", id: "start-kunden", style: "--sc:#1F7A3A" }, kundenKopf, chipBox,
     h("label", { class: "search" }, ic("search", "s"), h("input", { placeholder: "Kunden suchen", value: S.q, "aria-label": "Kunden suchen", oninput: e => { S.q = e.target.value; draw(); } })),
-    list,
+    list),
     h("div", { class: "spacer" }), h("button", { class: "btn wide", onclick: () => go("kundeEdit", {}) }, ic("plus"), "Neuer Kunde"),
     h("button", { class: "btn sec wide", style: "margin-top:8px", onclick: () => smEmpfangen() }, ic("download"), "Datenpaket aus der Sanierungsmappe einlesen"));
   draw(); S.drawKunden = draw;
@@ -7185,6 +7185,309 @@ const sonstJaNein = (f, d) => { try { const v = optsOf(f, d).map(o => String(o[0
   };
 })();
 (function () { const s = document.createElement("style"); s.textContent = `.sonst-inp{margin-top:6px;border-style:dashed}`; document.head.append(s); })();
+
+/* ===== Abnahmen: War das Fachunternehmen anwesend? =====
+   Auswahl in Abnahme Einzelmaßnahme und Heizungsabnahme. Die Textbausteine passen sich an,
+   und ohne Fachunternehmen entfällt dessen Unterschrift (Formular und PDF). */
+const FU_TYPEN = ["em", "heizung"];
+const FU_TEXT = {
+  // allgemeiner Eröffnungssatz EM
+  "Die Maßnahme wurde am {datum} gemeinsam mit dem Auftraggeber und dem ausführenden Fachunternehmen {firma} vor Ort abgenommen.":
+    "Die Maßnahme wurde am {datum} gemeinsam mit dem Auftraggeber vor Ort abgenommen. Das ausführende Fachunternehmen {firma} war bei der Abnahme nicht anwesend.",
+  // Eröffnungssatz Heizung
+  "Die neue Heizungsanlage ({art}) wurde am {datum} gemeinsam mit dem Auftraggeber und dem Fachunternehmen {firma} abgenommen.":
+    "Die neue Heizungsanlage ({art}) wurde am {datum} gemeinsam mit dem Auftraggeber abgenommen. Das Fachunternehmen {firma} war bei der Abnahme nicht anwesend.",
+  "Der Betreiber wurde in die Bedienung eingewiesen; Unterlagen und Fachunternehmererklärung wurden übergeben.":
+    "Nach Angabe des Betreibers wurde er vom Fachunternehmen in die Bedienung eingewiesen; Unterlagen und Fachunternehmererklärung liegen vor."
+};
+// zusätzliche Bausteine (am Ende der Gruppen, damit gespeicherte Auswahlen gültig bleiben)
+TEXTE.allg.push("{fu_satz}");
+TEXTE.heiz.push("{fu_satz}");
+const FU_SATZ = {
+  ja: "Das ausführende Fachunternehmen war bei der Abnahme anwesend und hat die Ausführung erläutert; offene Fragen wurden vor Ort geklärt.",
+  nein: "Da das Fachunternehmen bei der Abnahme nicht anwesend war, wurde die Ausführung anhand der Fachunternehmererklärung, der Rechnungen, der Produktnachweise und der Fotodokumentation geprüft."
+};
+(function () { const ft = fillText;
+  fillText = function (t, d) {
+    if (d && d.fu_anw === "nein" && FU_TEXT[t]) t = FU_TEXT[t];
+    if (t === "{fu_satz}") t = FU_SATZ[d && d.fu_anw === "nein" ? "nein" : "ja"];
+    return ft(t, d);
+  }; })();
+// Auswahlfeld vor den Textbausteinen
+for (const t of FU_TYPEN) { const sec = (TYPEN[t].sec || []).find(s => s.k === "text"); if (!sec) continue;
+  sec.f.unshift(F.seg("fu_anw", "Fachunternehmen bei der Abnahme", [["ja", "anwesend"], ["nein", "nicht anwesend"]], { re: 1, full: 1, after: () => setTimeout(() => render(), 60) }));
+  sec.sub = "Erst angeben, ob das Fachunternehmen dabei war – die Textbausteine passen sich an. Dann Bausteine antippen."; }
+const _fuInit = {}; for (const t of FU_TYPEN) { _fuInit[t] = TYPEN[t].init; TYPEN[t].init = k => Object.assign({ fu_anw: "ja" }, _fuInit[t](k)); }
+// Unterschrift des Fachunternehmens nur, wenn es anwesend war
+const fuRollen = (d, roles) => d && d.fu_anw === "nein" ? roles.filter(r => r !== "firma") : roles;
+(function () { const sb = sigBlock; sigBlock = function (v, roles, kunde, onChange) { return sb(v, FU_TYPEN.includes(v && v.typ) ? fuRollen(v.d, roles) : roles, kunde, onChange); }; })();
+(function () { const pv = pdfVorgang;
+  pdfVorgang = async function (k, x, ...rest) { const T = TYPEN[x && x.typ]; if (!T || !FU_TYPEN.includes(x.typ) || !x.d || x.d.fu_anw !== "nein") return pv(k, x, ...rest);
+    const alt = T.sigs; T.sigs = fuRollen(x.d, alt); try { return await pv(k, x, ...rest); } finally { T.sigs = alt; } }; })();
+
+/* ===== Datenaufnahme iSFP / Bedarfsausweis: Wände einzeln erfassen =====
+   Jede Wand: Bezeichnung, grenzt an, Himmelsrichtung, Maße, Fenster darin, Konstruktion, Dämmung.
+   Daraus: U-Wert je Wand, mittlerer U-Wert der Außenwand (→ Feld „U-Wert Ist“), Wandflächen,
+   Transmissionswärmeverlust H_T der Wände und die Zeilen der Hüllflächentabelle. */
+const WAND_TYPEN = ["isfp", "ea_b"];
+const WAND_MAT = [ // [Wert, Bezeichnung, λ in W/(mK)]
+  ["vollziegel", "Vollziegel / Klinker", 0.81], ["hlz_alt", "Hochlochziegel (bis 1980)", 0.58], ["hlz", "Hochlochziegel (ab 1980)", 0.39], ["hlz_daemm", "Wärmedämmziegel (ab 2000)", 0.12],
+  ["ks", "Kalksandstein", 0.99], ["bims", "Bims / Leichtbeton", 0.44], ["poren", "Porenbeton (Gasbeton)", 0.16], ["beton", "Stahlbeton", 2.3],
+  ["natur", "Naturstein", 2.3], ["fachwerk", "Fachwerk (Lehm/Ziegel)", 0.7], ["holz", "Holzständer / Holzrahmen", 0.13], ["zweischalig", "Zweischalig mit Luftschicht", 0.6]];
+const WAND_LAGE = [["aussen", "Außenluft", 0.04, 1], ["unbeheizt", "unbeheizter Raum (Garage, Keller, Treppenhaus)", 0.13, 0.5], ["erdreich", "Erdreich", 0, 0.6], ["nachbar", "beheiztes Nachbargebäude", 0.13, 0]];
+const WAND_DAEMM = [["keine", "keine"], ["aussen", "außen (WDVS)"], ["kern", "Kerndämmung"], ["innen", "innen"]];
+const WAND_RICHT = ["Nord", "Nordost", "Ost", "Südost", "Süd", "Südwest", "West", "Nordwest", "–"];
+const wLage = w => WAND_LAGE.find(x => x[0] === w.lage) || WAND_LAGE[0];
+function wandFl(w) { const l = num(w.l), hh = num(w.h); return num(w.fl) || (l && hh ? l * hh : 0); }
+function wandU(w) {
+  if (num(w.u_man)) return { u: num(w.u_man), man: 1 };
+  const m = WAND_MAT.find(x => x[0] === w.mat), d = num(w.dicke) / 100; if (!m || !d) return null;
+  let lamD = num(w.wls); if (lamD > 1) lamD = lamD / 1000; if (!lamD) lamD = 0.035;
+  const dd = w.daemm && w.daemm !== "keine" ? num(w.dst) / 100 : 0, Rs = 0.13 + wLage(w)[2];
+  const R = Rs + d / m[2] + (dd ? dd / lamD : 0); return { u: 1 / R, R, lam: m[2], dd };
+}
+function wandSumme(d) {
+  const L = (d.waende || []).map(w => ({ w, A: wandFl(w), F: num(w.fen) || 0, U: (wandU(w) || {}).u || 0, Fx: wLage(w)[3] })).filter(x => x.A > 0);
+  const aus = L.filter(x => x.w.lage === "aussen" || !x.w.lage), An = x => Math.max(0, x.A - x.F);
+  const Aaus = aus.reduce((s, x) => s + An(x), 0), UA = aus.reduce((s, x) => s + An(x) * x.U, 0);
+  return { L, aus, Aaus, Fen: aus.reduce((s, x) => s + x.F, 0), Umit: Aaus && aus.every(x => x.U) ? UA / Aaus : null,
+    HT: L.reduce((s, x) => s + x.Fx * An(x) * x.U, 0), Aalle: L.reduce((s, x) => s + An(x), 0), gedaemmt: L.filter(x => x.w.daemm && x.w.daemm !== "keine").length };
+}
+/** Mittelwert in die vorhandenen Felder übernehmen (U-Wert Ist, Fläche, Dämmstärke) */
+function wandUebernehmen(d) {
+  const s = wandSumme(d); if (!s.aus.length) return;
+  if (s.Umit) { d.wand_u = nf(s.Umit, 2); const el = document.getElementById("f_wand_u"); if (el) el.value = d.wand_u; }
+  d.wand_fl = nf(s.Aaus, 1); const ef = document.getElementById("f_wand_fl"); if (ef) ef.value = d.wand_fl;
+  const ds = s.aus.map(x => x.w.daemm && x.w.daemm !== "keine" ? num(x.w.dst) : 0); const mx = Math.max(...ds);
+  d.wand_daem = mx ? String(mx) : (d.wand_daem || ""); const ed = document.getElementById("f_wand_daem"); if (ed) ed.value = d.wand_daem;
+}
+/** Vorschlag aus den Gebäudemaßen: vier Außenwände (bzw. je Form) */
+function wandVorschlag(d) {
+  const g = geo(d); if (!g) return null; const L = num(d.g_l), B = num(d.g_b), ori = d.g_ori || "ns", fa = g.fen / g.awb;
+  const lang = (g.u / 2) * (L / (L + B)), kurz = (g.u / 2) * (B / (L + B)), gieb = g.gieb * g.aDG / 2;
+  const seiten = ori === "ns" ? [["Nord", lang, 0], ["Ost", kurz, gieb], ["Süd", lang, 0], ["West", kurz, gieb]] : [["Ost", lang, 0], ["Süd", kurz, gieb], ["West", lang, 0], ["Nord", kurz, gieb]];
+  return seiten.map(([r, l, gb]) => ({ id: uid(), name: "Außenwand " + r, lage: "aussen", ori: r, l: nf(l, 2), h: nf(g.wh, 2), fl: gb ? nf(l * g.wh + gb, 1) : "", fen: nf((l * g.wh + gb) * fa, 1), mat: "", dicke: "", daemm: "keine", dst: "", wls: "" }));
+}
+/* ---------- Eingabe ---------- */
+function wandEditor(f, d, ch) {
+  const box = h("div", { class: "fld full wd" });
+  const melde = () => { wandUebernehmen(d); ch(Object.assign({}, f, { ty: "x", re: 0 })); };
+  const draw = () => {
+    const L = d.waende ||= [];
+    const inp = (w, k, ph, opt = {}) => h("input", { class: "inp", value: w[k] || "", placeholder: ph, inputmode: opt.num ? "decimal" : null, oninput: e => { w[k] = e.target.value; melde(); upd(); } });
+    const sel = (w, k, list, leer) => h("select", { class: "inp", onchange: e => { w[k] = e.target.value; melde(); draw(); } }, leer ? h("option", { value: "" }, leer) : null,
+      list.map(o => { const [v, t] = Array.isArray(o) ? o : [o, o]; return h("option", { value: v, selected: (w[k] || "") === v }, t); }));
+    const lb = (t, el, cls) => h("label", { class: "wd-f" + (cls ? " " + cls : "") }, h("span", null, t), el);
+    const upd = () => { L.forEach((w, i) => { const el = box.querySelector("#wdu" + i); if (!el) return; const r = wandU(w), A = wandFl(w);
+      el.textContent = (A ? nf(A, 1) + " m²" + (num(w.fen) ? " (davon " + nf(num(w.fen), 1) + " m² Fenster)" : "") : "Maße fehlen") + " · " + (r ? "U = " + nf(r.u, 2) + " W/(m²K)" + (r.man ? " (eingetragen)" : "") : "U-Wert: Konstruktion und Wandstärke angeben");
+      el.className = "wd-u" + (r && r.u <= 0.2 ? " gut" : r && r.u <= 0.6 ? " mittel" : r ? " schlecht" : ""); });
+      const s = wandSumme(d), sm = box.querySelector(".wd-sum"); if (sm) rc(sm, wandSummeEl(d, s)); };
+    rc(box, h("span", { class: "lb" }, "Wände einzeln erfassen"),
+      h("p", { class: "mut", style: "margin:0 0 8px;font-size:13px" }, "Jede Wand mit Konstruktion und Dämmung – auch einzelne gedämmte Wände oder Teilflächen (z. B. nur Giebel gedämmt) über „Wand hinzufügen“ bzw. „Teilfläche hinzufügen“. Die App berechnet daraus den U-Wert je Wand, den Mittelwert der Außenwand (oben unter „U-Wert Ist“) und die Hüllflächentabelle."),
+      L.map((w, i) => h("div", { class: "wd-k" + (w.daemm && w.daemm !== "keine" ? " ged" : "") },
+        h("div", { class: "wd-kopf" }, h("input", { class: "inp wd-name", value: w.name || "", placeholder: "Bezeichnung, z. B. Außenwand Nord", oninput: e => { w.name = e.target.value; melde(); } }),
+          h("button", { type: "button", class: "wd-x", title: "Kopieren", "aria-label": "Wand kopieren", onclick: () => { L.splice(i + 1, 0, Object.assign({}, clone(w), { id: uid(), name: (w.name || "Wand") + " (Kopie)" })); melde(); draw(); } }, "⧉"),
+          h("button", { type: "button", class: "wd-x", title: "Entfernen", "aria-label": "Wand entfernen", onclick: () => { L.splice(i, 1); melde(); draw(); } }, "✕")),
+        h("div", { class: "wd-g" },
+          lb("Grenzt an", sel(w, "lage", WAND_LAGE.map(x => [x[0], x[1]])), "w2"), lb("Himmelsrichtung", sel(w, "ori", WAND_RICHT, "–")),
+          lb("Länge (m)", inp(w, "l", "z. B. 10,5", { num: 1 })), lb("Höhe (m)", inp(w, "h", "z. B. 5,5", { num: 1 })),
+          lb("oder Fläche (m²)", inp(w, "fl", "brutto", { num: 1 })), lb("Fenster/Türen darin (m²)", inp(w, "fen", "0", { num: 1 })),
+          lb("Konstruktion", sel(w, "mat", WAND_MAT.map(x => [x[0], x[1]]), "bitte wählen"), "w2"), lb("Wandstärke (cm)", inp(w, "dicke", "z. B. 36,5", { num: 1 })),
+          lb("Baujahr", inp(w, "bj", "", { num: 1 })),
+          lb("Dämmung", h("div", { class: "seg" }, WAND_DAEMM.map(([v, t]) => h("button", { type: "button", class: (w.daemm || "keine") === v ? "on" : "", onclick: () => { w.daemm = v; melde(); draw(); } }, t))), "w2"),
+          w.daemm && w.daemm !== "keine" ? [lb("Dämmstärke (cm)", inp(w, "dst", "z. B. 14", { num: 1 })), lb("WLS / Lambda", inp(w, "wls", "035 oder 0,035", { num: 1 }))] : null,
+          lb("U-Wert bekannt (optional)", inp(w, "u_man", "überschreibt Berechnung", { num: 1 }), "w2")),
+        h("div", { id: "wdu" + i, class: "wd-u" }),
+        h("button", { type: "button", class: "linkbtn wd-teil", onclick: () => { const ged = w.daemm && w.daemm !== "keine";
+          L.splice(i + 1, 0, { id: uid(), name: (w.name || "Wand") + (ged ? " – ungedämmter Teil" : " – gedämmter Teil"), lage: w.lage || "aussen", ori: w.ori || "", mat: w.mat || "", dicke: w.dicke || "", bj: w.bj || "", daemm: ged ? "keine" : "aussen", dst: ged ? "" : "14", wls: ged ? "" : "035", l: "", h: "", fl: "", fen: "" });
+          melde(); draw(); toast("Teilfläche angelegt – bitte Fläche eintragen und bei der Hauptwand abziehen"); } }, ic("plus", "s"), (w.daemm && w.daemm !== "keine") ? "Ungedämmte Teilfläche dieser Wand hinzufügen" : "Gedämmte Teilfläche dieser Wand hinzufügen"))),
+      h("div", { class: "btnrow", style: "flex-wrap:wrap;margin-top:8px" },
+        h("button", { type: "button", class: "btn sec", onclick: () => { L.push({ id: uid(), name: "", lage: "aussen", ori: "", daemm: "keine" }); melde(); draw(); } }, ic("plus"), "Wand hinzufügen"),
+        h("button", { type: "button", class: "btn sec", onclick: () => { const v = wandVorschlag(d); if (!v) { toast("Bitte zuerst die Gebäudemaße eintragen."); return; }
+          const tu = () => { d.waende = v; melde(); draw(); toast(v.length + " Außenwände aus den Gebäudemaßen angelegt"); };
+          L.length ? ask("Wände neu vorschlagen?", "Die bisher erfassten Wände werden ersetzt.", "Ersetzen", tu, true) : tu(); } }, ic("house"), "Aus Gebäudemaßen vorschlagen")),
+      h("div", { class: "wd-sum" }));
+    upd();
+  };
+  draw(); return box;
+}
+function wandSummeEl(d, s) {
+  if (!s.L.length) return null;
+  return h("div", { class: "uw" }, h("div", { class: "uwh" }, "Wände – Ergebnis"),
+    h("div", { class: "wd-kpi" },
+      [[nf(s.Aaus, 1) + " m²", "Außenwand (ohne Fenster)"], [s.Umit ? nf(s.Umit, 2) : "–", "mittlerer U-Wert W/(m²K)"], [nf(s.HT, 1) + " W/K", "Wärmeverlust H_T Wände"], [s.gedaemmt + " / " + s.L.length, "Wände gedämmt"]]
+        .map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
+    s.Umit ? h("div", { class: "ampel " + (s.Umit <= 0.2 ? "g" : s.Umit <= 0.5 ? "y" : "r") }, h("i"), s.Umit <= 0.2 ? "Außenwand erfüllt den BEG-Zielwert (≤ 0,20)." : s.Umit <= 0.24 ? "Außenwand erfüllt die GEG-Anforderung (≤ 0,24), aber nicht den BEG-Zielwert." : "Außenwand liegt über der GEG-Anforderung von 0,24 – Dämmung prüfen.") : null);
+}
+/* ---------- Einbau in iSFP und Bedarfsausweis ---------- */
+(function () {
+  const of = field; field = function (f, data, ch) { return f.ty === "waende" ? wandEditor(f, data, ch) : of(f, data, ch); };
+  for (const t of WAND_TYPEN) { const T = TYPEN[t]; if (!T) continue; T.hft = 1;
+    const sec = (T.sec || []).find(s => s.k === "wand"); if (!sec) continue;
+    const i = sec.f.findIndex(f => f.k === "wand_bem");
+    sec.f.splice(i < 0 ? sec.f.length : i, 0, { ty: "waende", k: "waende", full: 1, para: 1 },
+      { ty: "dyn", render: () => null, pdf: d => { const s = wandSumme(d); if (!s.L.length) return [];
+        return [...s.L.map(x => [x.w.name || "Wand", [wLage(x.w)[1], x.w.ori, nf(Math.max(0, x.A - x.F), 1) + " m²", (WAND_MAT.find(m => m[0] === x.w.mat) || [, x.w.mat || ""])[1], x.w.dicke ? x.w.dicke + " cm" : "", x.w.daemm && x.w.daemm !== "keine" ? "Dämmung " + (WAND_DAEMM.find(z => z[0] === x.w.daemm) || [, ""])[1] + " " + (x.w.dst || "") + " cm" : "ungedämmt", x.U ? "U = " + nf(x.U, 2) : ""].filter(Boolean).join(", ")]),
+          ["Außenwand gesamt", nf(s.Aaus, 1) + " m²" + (s.Umit ? ", mittlerer U-Wert " + nf(s.Umit, 2) + " W/(m²K)" : "")], ["Wärmeverlust H_T Wände", nf(s.HT, 1) + " W/K"]]; } });
+    sec.sub = "Ist-Zustand der Außenwand. Weiter unten können Sie jede Wand einzeln mit Konstruktion und Dämmung erfassen – der U-Wert wird dann berechnet.";
+  }
+  GEO_KEYS.push("waende");   // Wände gehören zum Gebäude: zwischen Kunde, iSFP und Bedarfsausweis teilen
+})();
+/* Hüllflächentabelle: erfasste Wände statt pauschaler Fassaden */
+(function () { const ha = hftAuto;
+  hftAuto = function (d) { const r = ha(d); const s = wandSumme(d); if (!r || !s.L.length) return r;
+    const g = geo(d), fa = g && g.awb ? g.fen / g.awb : 0.2, uF = d.fen_u || "";
+    const rest = r.filter(x => x.b !== "Außenwand" && x.b !== "Fenster"), neu = [];
+    for (const x of s.L) { const w = x.w, fen = num(w.fen) || (w.lage === "aussen" || !w.lage ? x.A * fa : 0), net = Math.max(0, x.A - fen);
+      const b = (w.lage === "unbeheizt" ? "Wand zu unbeheizt" : w.lage === "erdreich" ? "Wand gegen Erdreich" : w.lage === "nachbar" ? "Wand zu Nachbargebäude" : "Außenwand") + (w.name ? ": " + w.name : "");
+      neu.push({ b, r: w.ori && w.ori !== "–" ? w.ori.replace(/^(Nord|Süd)(ost|west)$/i, (_, a, c) => a) : "–", a: nf(net, 1), u: x.U ? nf(x.U, 2) : "" });
+      if (fen && (w.lage === "aussen" || !w.lage)) neu.push({ b: "Fenster" + (w.name ? ": " + w.name : ""), r: w.ori || "–", a: nf(fen, 1), u: uF }); }
+    const i = rest.findIndex(x => x.r === "unten"); rest.splice(i < 0 ? rest.length : i, 0, ...neu); return rest; }; })();
+(function () { const s = document.createElement("style"); s.textContent = `
+.wd-k{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px;background:var(--card);box-shadow:inset 4px 0 0 #dc2626}.wd-k.ged{box-shadow:inset 4px 0 0 #16a34a}
+.wd-kopf{display:flex;gap:6px;align-items:center;margin-bottom:8px}.wd-name{flex:1;font-weight:600}
+.wd-x{flex:none;width:36px;height:36px;border:1px solid var(--line);background:var(--card);border-radius:10px;font-size:15px;cursor:pointer;color:var(--ink2)}
+.wd-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.wd-f{display:flex;flex-direction:column;gap:3px;min-width:0}.wd-f>span{font-size:12.5px;color:var(--ink3)}.wd-f.w2{grid-column:1/-1}
+.wd-f .seg{display:flex;flex-wrap:wrap}
+.wd-u{margin-top:8px;font-size:13px;font-weight:600;padding:6px 8px;border-radius:8px;background:var(--soft);color:var(--ink2)}.wd-u.gut{color:#166534;background:#dcfce7}.wd-u.mittel{color:#92400e;background:#fef3c7}.wd-u.schlecht{color:#991b1b;background:#fee2e2}
+.wd-teil{margin-top:6px;font-size:13px}
+.wd-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:8px 0}.wd-kpi div{display:flex;flex-direction:column;background:var(--card);border-radius:10px;padding:8px}.wd-kpi b{font-size:17px}.wd-kpi span{font-size:12px;color:var(--ink3)}
+@media(min-width:640px){.wd-g{grid-template-columns:repeat(4,minmax(0,1fr))}.wd-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}
+`; document.head.append(s); })();
+
+/* ===== Letzte 30 Tage: was ist passiert? (Startseite unter „Zu zeichnen“) =====
+   Quellen: neue Kunden, Statuswechsel, wahrgenommene Termine, erfasste Zeiten, Datenaufnahmen und Zeichnungs-Status,
+   Angebote/Rechnungen und Zahlungen. Alles wird aus den vorhandenen Daten gelesen – nichts zusätzlich gespeichert. */
+const AKT = { filter: "alle", alle: false };
+const AKT_ARTEN = [["alle", "Alle"], ["termin", "Termine"], ["zeichnen", "Zeichnungen"], ["kunde", "Kunden"], ["geld", "Rechnungen"], ["zeit", "Zeiten"]];
+const aktTs = d => { if (!d) return 0; if (typeof d === "number") return d; const t = Date.parse(String(d).length === 10 ? d + "T12:00" : d); return isNaN(t) ? 0 : t; };
+function aktEreignisse(tage = 30) {
+  const ab = Date.now() - tage * 864e5, jetzt = Date.now() + 60e3, out = [], add = (e) => { if (e.t >= ab && e.t <= jetzt) out.push(e); };
+  const stName = s => ((typeof STATUS !== "undefined" && STATUS.find(x => x[0] === s)) || [, s])[1];
+  for (const k of S.kunden || []) { const a = k.akte || {};
+    if (k.created) add({ t: aktTs(k.created), art: "kunde", text: "Neuer Kunde angelegt", k });
+    for (const [s, d] of Object.entries(a.verlauf || {})) if (s !== "anfrage") add({ t: aktTs(d), art: "kunde", text: "Status: " + stName(s), k });
+    for (const f of a.fristen || []) if (f.art === "termin" && f.ok && f.datum) add({ t: aktTs(f.datum + "T" + (kalZeit(f) || "12:00")), art: "termin", text: "Termin wahrgenommen: " + f.t, k, wer: kalWer(k, f), f, uhr: !!kalZeit(f) });
+    for (const z of a.zeiten || []) if (!z.termin && z.datum) add({ t: aktTs(z.datum), art: "zeit", text: "Aufwand erfasst: " + (z.t || "Arbeitszeit") + [num(z.std) ? " · " + maZahl(num(z.std)) + " Std." : "", num(z.km) ? " · " + maZahl(num(z.km), 0) + " km" : ""].join(""), k, wer: z.wer || k.zust });
+    for (const z of a.zeichnen || []) {
+      if (z.erstellt) add({ t: z.erstellt, art: "zeichnen", text: "Datenaufnahme " + zeichTypName(z.typ) + " angelegt", k, z, uhr: 1 });
+      for (const [s, v] of Object.entries(z.verlauf || {})) if (s !== "offen" && v && v.t) add({ t: v.t, art: "zeichnen", text: "Zeichnung " + zeichTypName(z.typ) + ": " + (ZEICH_ST.find(x => x[0] === s) || [, s])[1], k, wer: v.von, z, uhr: 1 }); } }
+  try { if ((!teamAktiv() || darf("angSehen")) && typeof Belege !== "undefined") for (const b of Belege.liste || []) { const k = (S.kunden || []).find(x => x.id === b.kid); if (!k) continue;
+      if (b.datum && !b.entwurf) add({ t: aktTs(b.datum), art: "geld", text: belegTitel(b) + (b.nr ? " " + b.nr : "") + " erstellt" + (num(b.brutto) ? " · " + eur2(num(b.brutto)) : ""), k });
+      for (const p of b.zahl || []) if (p && p.datum) add({ t: aktTs(p.datum), art: "geld", text: "Zahlung eingegangen" + (b.nr ? " zu " + b.nr : "") + (num(p.betrag) ? " · " + eur2(num(p.betrag)) : ""), k }); } } catch (e) { }
+  return out.sort((a, b) => b.t - a.t);
+}
+function aktKarte() {
+  const box = h("section", { class: "card fsec akt" });
+  const draw = () => {
+    const alle = aktEreignisse(), l = AKT.filter === "alle" ? alle : alle.filter(e => e.art === AKT.filter), zeig = AKT.alle ? l : l.slice(0, 12), team = teamAktiv() && kalLeute().length > 1;
+    const tagTxt = t => { const d = kalTag(new Date(t)), hz = heute(); return d === hz ? "Heute" : d === plusTage(hz, -1) ? "Gestern" : new Date(t).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }); };
+    const icon = { termin: "cal", zeichnen: "pen", kunde: "users", geld: "euro", zeit: "edit" };
+    let letzter = null; const zeilen = [];
+    for (const e of zeig) { const tg = tagTxt(e.t); if (tg !== letzter) { zeilen.push(h("div", { class: "akt-tag" }, tg)); letzter = tg; }
+      zeilen.push(h("button", { type: "button", class: "akt-e akt-" + e.art, style: e.wer ? "--c:" + kalFarbe(e.wer) : null, onclick: () => e.f && typeof termAnsicht === "function" ? termAnsicht(e.k, e.f) : e.z ? zeichOeffnen(e.k, e.z) : go("kunde", { id: e.k.id }) },
+        h("span", { class: "akt-i" }, ic(icon[e.art] || "info", "s")),
+        h("span", { class: "akt-tx" }, h("b", null, e.text), h("small", null, [kName(e.k), team && e.wer ? kalName(e.wer).replace(" (ich)", "") : null, e.uhr ? new Date(e.t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + " Uhr" : null].filter(Boolean).join(" · "))))); }
+    rc(box, h("div", { class: "akh" }, h("h4", null, "Letzte 30 Tage"), h("span", { class: "mut" }, alle.length + " Ereignisse")),
+      h("div", { class: "akt-f" }, AKT_ARTEN.map(([v, t]) => { const n = v === "alle" ? alle.length : alle.filter(e => e.art === v).length;
+        return n || v === "alle" ? h("button", { type: "button", class: "akt-c" + (AKT.filter === v ? " on" : ""), onclick: () => { AKT.filter = v; AKT.alle = false; draw(); } }, t + " " + n) : null; })),
+      zeilen.length ? zeilen : h("p", { class: "mut", style: "margin:6px 0" }, "In den letzten 30 Tagen ist nichts passiert."),
+      l.length > 12 ? h("button", { type: "button", class: "linkbtn", style: "margin-top:8px", onclick: () => { AKT.alle = !AKT.alle; draw(); } }, AKT.alle ? "Weniger anzeigen" : "Alle " + l.length + " anzeigen") : null);
+  };
+  draw(); return box;
+}
+(function () { const w = wasStehtAn;
+  wasStehtAn = function () { const f = w(); if ((S.kunden || []).length) f.append(aktKarte()); return f; }; })();
+(function () { const s = document.createElement("style"); s.textContent = `
+.akt .akh{display:flex;align-items:baseline;justify-content:space-between}.akt h4{margin:0 0 8px}
+.akt-f{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}.akt-c{border:1px solid var(--line);background:var(--card);border-radius:16px;padding:4px 10px;font:inherit;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.akt-c.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.akt-tag{font-size:12px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px}
+.akt-e{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;padding:6px 0;border-bottom:1px solid var(--line);font:inherit;color:var(--ink);cursor:pointer}
+.akt-i{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--g);box-shadow:inset 0 0 0 2px var(--c,transparent)}
+.akt-termin .akt-i{color:#2563eb}.akt-zeichnen .akt-i{color:#d97706}.akt-geld .akt-i{color:#16a34a}.akt-zeit .akt-i{color:#7c3aed}
+.akt-tx{min-width:0;display:flex;flex-direction:column}.akt-tx b{font-size:14px;font-weight:600;overflow-wrap:anywhere}.akt-tx small{font-size:12.5px;color:var(--ink3)}
+`; document.head.append(s); })();
+
+/* ===== Startseite: 3D-Kacheln und farbige Bereiche =====
+   Oben drei große 3D-Kacheln mit Zahlen (Nächste 30 Tage, Zu zeichnen, Letzte 30 Tage).
+   Antippen öffnet den Bereich und springt hin. Die Bereiche selbst sind farbig hinterlegte 3D-Karten. */
+const START3D = [
+  { cls: "wsa", key: "wsa", t: "Nächste 30 Tage", icon: "cal", farbe: "#14682D",
+    zahl: () => alleFristen().filter(x => x.f.datum && tageBis(x.f.datum) <= 30).length, unter: n => n === 1 ? "Termin / Frist" : "Termine & Fristen" },
+  { cls: "zk", key: "zk", t: "Zu zeichnen", icon: "pen", farbe: "#2E9433",
+    zahl: () => zeichListe().filter(x => x.z.st === "offen" || x.z.st === "bearbeitung").length,
+    unter: () => { const l = zeichListe(), o = l.filter(x => x.z.st === "offen").length, b = l.filter(x => x.z.st === "bearbeitung").length; return o + " offen · " + b + " in Bearb."; } },
+  { cls: "akt", key: "akt", t: "Letzte 30 Tage", icon: "list", farbe: "#5B8F1F", zahl: () => aktEreignisse().length, unter: () => "Ereignisse" },
+  { cls: null, key: "kunden", t: "Kunden", icon: "users", farbe: "#1F7A3A", zahl: () => (S.kunden || []).length,
+    unter: () => { const o = (S.kunden || []).filter(k => !(k.stat && k.stat.vollmacht)).length; return o ? o + " ohne Vollmacht" : "alle mit Vollmacht"; } }];
+const START = { zu: new Set() };
+(function () { const w = wasStehtAn;
+  wasStehtAn = function () {
+    const f = w(), secs = {};
+    for (const s of f.children) for (const d of START3D) if (s.classList.contains(d.cls)) secs[d.key] = s;
+    if (!Object.keys(secs).length) return f;
+    // Bereiche: Farbe, Kopf nach oben, Klapp-Zustand merken
+    for (const d of START3D) { const s = secs[d.key]; if (!s) continue;
+      s.classList.add("s3d"); s.style.setProperty("--sc", d.farbe); s.id = "start-" + d.key;
+      const kopf = s.querySelector(":scope>.akh"); if (kopf && s.firstElementChild !== kopf) s.prepend(kopf);
+      if (kopf) { const ti = kopf.querySelector("h4"); if (ti && d.key === "wsa") ti.textContent = "Was steht an?"; kopf.prepend(h("span", { class: "s3d-ic" }, ic(d.icon, "s"))); }
+      if (START.zu.has(d.key)) s.classList.add("zu");
+      new MutationObserver(() => { s.classList.contains("zu") ? START.zu.add(d.key) : START.zu.delete(d.key); }).observe(s, { attributes: true, attributeFilter: ["class"] }); }
+    // Kachelreihe
+    const reihe = h("div", { class: "s3d-reihe" }, START3D.filter(d => secs[d.key] || !d.cls).map(d => { let n = 0; try { n = d.zahl(); } catch (e) { }
+      return h("button", { type: "button", class: "s3d-k", style: "--sc:" + d.farbe, onclick: () => { const s = secs[d.key] || document.getElementById("start-" + d.key); if (!s) return; START.zu.delete(d.key); s.classList.remove("zu"); s.scrollIntoView({ behavior: "smooth", block: "start" }); s.classList.add("s3d-blink"); setTimeout(() => s.classList.remove("s3d-blink"), 900); } },
+        h("span", { class: "s3d-ki" }, ic(d.icon)), h("b", null, String(n)), h("span", { class: "s3d-kt" }, d.t), h("small", null, typeof d.unter === "function" ? d.unter(n) : "")); }));
+    f.prepend(reihe); return f;
+  }; })();
+(function () { const s = document.createElement("style"); s.textContent = `
+.s3d-reihe{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px;margin:2px 0 18px}@media(min-width:620px){.s3d-reihe{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.s3d-k{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;border:0;border-radius:18px;padding:12px 11px 11px;cursor:pointer;text-align:left;color:#fff;font:inherit;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--sc) 78%,#fff) 0%,var(--sc) 55%,color-mix(in srgb,var(--sc) 80%,#000) 100%);
+  box-shadow:0 1px 0 rgba(255,255,255,.45) inset,0 -3px 0 rgba(0,0,0,.18) inset,0 5px 0 color-mix(in srgb,var(--sc) 60%,#000),0 6px 0 color-mix(in srgb,var(--sc) 45%,#000),0 12px 18px -6px rgba(0,0,0,.35);
+  margin-bottom:6px;transition:transform .12s ease,box-shadow .12s ease}
+.s3d-k:active{transform:translateY(5px);box-shadow:0 1px 0 rgba(255,255,255,.4) inset,0 1px 0 color-mix(in srgb,var(--sc) 45%,#000),0 3px 6px rgba(0,0,0,.25)}
+@media (hover:hover){.s3d-k:hover{transform:translateY(-2px)}}
+.s3d-ki{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.22);box-shadow:0 1px 0 rgba(255,255,255,.35) inset;margin-bottom:6px}
+.s3d-ki svg{width:20px;height:20px;stroke:#fff}
+.s3d-k b{font-size:28px;line-height:1.05;font-weight:800;text-shadow:0 2px 0 rgba(0,0,0,.18)}
+.s3d-kt{font-size:13px;font-weight:700;line-height:1.2}.s3d-k small{font-size:11px;opacity:.88;line-height:1.25}
+section.s3d{position:relative;border-radius:20px!important;border:1px solid color-mix(in srgb,var(--sc) 30%,transparent)!important;overflow:hidden;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--sc) 13%,#fff) 0%,color-mix(in srgb,var(--sc) 5%,#fff) 100%)!important;
+  box-shadow:0 1px 0 #fff inset,0 5px 0 color-mix(in srgb,var(--sc) 28%,#fff),0 6px 0 color-mix(in srgb,var(--sc) 40%,#fff),0 14px 22px -10px rgba(0,0,0,.28)!important;margin-bottom:20px!important;padding-top:0!important}
+section.s3d>.akh{margin:0 -16px 12px!important;padding:11px 16px!important;background:linear-gradient(180deg,color-mix(in srgb,var(--sc) 85%,#fff),var(--sc));color:#fff;align-items:center!important;box-shadow:0 -2px 0 rgba(0,0,0,.12) inset}
+section.s3d>.akh h4{color:#fff!important;margin:0!important;font-size:17px;text-shadow:0 1px 0 rgba(0,0,0,.15)}
+section.s3d>.akh .mut{color:rgba(255,255,255,.9)!important}
+section.s3d>.akh::after{border-color:#fff!important}
+.s3d-ic{flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.22)}.s3d-ic svg{stroke:#fff}
+section.s3d.zu>.akh{margin-bottom:0!important}section.s3d.zu{padding-bottom:0!important}
+section.s3d .wrow,section.s3d .zk-e,section.s3d .akt-e{background:rgba(255,255,255,.85)}
+section.s3d .akt-e{border-radius:10px;padding:7px 8px;margin-bottom:4px;border-bottom:0}
+section.kunden3d .search{background:#fff;margin:4px 0 10px}section.kunden3d .chips.stf{margin:0 0 8px}section.kunden3d>div>.card.list,section.kunden3d .card.empty{box-shadow:none;border-color:color-mix(in srgb,var(--sc) 20%,transparent)}
+section.s3d .kal{background:rgba(255,255,255,.75);border-radius:14px;padding:10px;border-bottom:0}
+.s3d-blink{animation:s3dB .9s ease}@keyframes s3dB{0%{box-shadow:0 0 0 0 var(--sc)}40%{box-shadow:0 0 0 6px color-mix(in srgb,var(--sc) 40%,transparent)}100%{}}
+@media(max-width:360px){.s3d-k b{font-size:24px}.s3d-kt{font-size:12px}}
+`; document.head.append(s); })();
+/* Kundenliste: höchstens 5 Kunden sichtbar, Rest in der Liste scrollen */
+function kundenListeBegrenzen() {
+  const l = document.querySelector("section.kunden3d .card.list"); if (!l) return;
+  const rows = l.querySelectorAll(":scope>.row"), hint = l.parentElement.querySelector(".kl-hint");
+  if (rows.length <= 5) { l.style.maxHeight = ""; l.classList.remove("kl-scroll"); if (hint) hint.remove(); return; }
+  const h5 = rows[4].offsetTop + rows[4].offsetHeight - rows[0].offsetTop + 1;
+  if (l.style.maxHeight !== h5 + "px") l.style.maxHeight = h5 + "px";
+  l.classList.add("kl-scroll");
+  const txt = rows.length + " Kunden – in der Liste nach unten wischen, um alle zu sehen";
+  if (!hint) l.after(h("p", { class: "kl-hint" }, ic("chev", "s"), txt)); else if (hint.textContent !== txt) rc(hint, ic("chev", "s"), txt);
+}
+(function () { let t = 0; const v = document.getElementById("view"); if (!v) return;
+  new MutationObserver(() => { cancelAnimationFrame(t); t = requestAnimationFrame(kundenListeBegrenzen); }).observe(v, { childList: true, subtree: true });
+  window.addEventListener("resize", () => kundenListeBegrenzen()); })();
+(function () { const s = document.createElement("style"); s.textContent = `
+section.kunden3d .card.list{position:relative}
+section.kunden3d .card.list.kl-scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scrollbar-width:thin;
+  box-shadow:inset 0 -14px 12px -12px rgba(0,0,0,.22)!important}
+.kl-hint{display:flex;align-items:center;justify-content:center;gap:4px;margin:8px 0 0;font-size:12.5px;color:var(--ink3)}.kl-hint svg{transform:rotate(90deg);width:14px;height:14px}
+`; document.head.append(s); })();
 
 </script>
 </body></html>
