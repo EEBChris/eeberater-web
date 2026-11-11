@@ -3065,7 +3065,7 @@ async function pdfZeigen(blob, name, mail) {
     console.warn("PDF-Vorschau", e); url = URL.createObjectURL(blob);
     pages.replaceChildren(h("div", { class: "info", style: "margin:12px" }, "Die Vorschau konnte nicht angezeigt werden (" + (e instanceof Event ? "PDF-Anzeige konnte nicht geladen werden" : String(e && (e.message || e.name) || e)) + "). Mit „Speichern“ oder „E-Mail“ oben kannst du das PDF trotzdem öffnen oder weitergeben."),
       h("div", { class: "btnrow", style: "margin:0 12px 12px" }, h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", style: "text-decoration:none" }, ic("file"), "PDF in neuem Fenster öffnen")),
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || NATIV ? null : h("iframe", { class: "pvf", src: url, title: "PDF-Vorschau" }));   // Handys zeigen PDFs im Rahmen nur als weiße Seite
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || NATIV ? "" : h("iframe", { class: "pvf", src: url, title: "PDF-Vorschau" }));   // Handys zeigen PDFs im Rahmen nur als weiße Seite
   }
   // Sicherheitsnetz: bleibt die Seite leer (Darstellung hängt), nach 15 s den Öffnen-Knopf anbieten
   setTimeout(() => { if (!document.body.contains(scr) || pages.querySelector("canvas, iframe, .info")) return; if (!url) url = URL.createObjectURL(blob);
@@ -7488,6 +7488,178 @@ section.kunden3d .card.list.kl-scroll{overflow-y:auto;-webkit-overflow-scrolling
   box-shadow:inset 0 -14px 12px -12px rgba(0,0,0,.22)!important}
 .kl-hint{display:flex;align-items:center;justify-content:center;gap:4px;margin:8px 0 0;font-size:12.5px;color:var(--ink3)}.kl-hint svg{transform:rotate(90deg);width:14px;height:14px}
 `; document.head.append(s); })();
+
+/* ===== Förderrechner: Klimageschwindigkeitsbonus nach KfW-Merkblatt 458 (Stand 09/2026, BEG EM ab 21.07.2026) =====
+   Der Bonus wird nur noch gerechnet, wenn alle Voraussetzungen wirklich erfüllt und eingetragen sind:
+   - Antragsteller ist selbst nutzender Eigentümer (nur für die selbst genutzte Wohneinheit)
+   - Austausch einer funktionstüchtigen Öl-, Kohle-, Gas-Etagen- oder Nachtstromspeicherheizung (Alter egal) oder
+   - einer funktionstüchtigen Gas- oder Biomasseheizung, deren Inbetriebnahme bei Antragstellung mind. 20 Jahre zurückliegt
+   - Satz nach Antragsdatum: 16 % bis 31.01.2027, dann alle 6 Monate −4 Punkte, ab 01.08.2028 kein Bonus
+   Die frühere Kombinationspflicht bei Biomasse (Solarthermie/WP für Warmwasser) steht nicht mehr im Merkblatt. */
+const KGB_IMMER = ["oel", "kohle", "gaset", "nacht"], KGB_ALTER = ["gas", "bio"];
+ALT_HEIZ.splice(0, ALT_HEIZ.length,
+  ["", "– bitte wählen –"], ["oel", "Ölheizung"], ["gas", "Gasheizung (Kessel, Brennwert, NT)"],
+  ["gaset", "Gas-Etagenheizung (Therme)"], ["nacht", "Nachtstromspeicherheizung"], ["kohle", "Kohle- / Koksheizung"],
+  ["bio", "Biomasseheizung (Pellet, Holz)"], ["fern", "Fernwärme"], ["wp", "Wärmepumpe (Austausch)"], ["keine", "Keine Heizung / Neubau-Teil"]);
+KGB_ALT.splice(0, KGB_ALT.length, ...KGB_IMMER, ...KGB_ALTER);
+const KGB_ALT_MAP = { gas20: "gas", gasjung: "gas", gaskt: "gas", bio20: "bio", biojung: "bio" };
+function kgbMigrate(d) { if (d && KGB_ALT_MAP[d.alt]) d.alt = KGB_ALT_MAP[d.alt]; return d; }
+/** bisherige Heizung aus der Kundenakte ableiten */
+function kgbAusKunde(k) {
+  if (!k) return ""; const t = ((k.h_art || "") + " " + (k.h_et || "")).toLowerCase(); if (!t.trim()) return "";
+  if (/hybrid|wärmepumpe/.test(t)) return /hybrid/.test(t) ? "gas" : "wp";
+  if (/nachtspeicher|nachtstrom/.test(t)) return "nacht";
+  if (/etage|therme/.test(t)) return "gaset";
+  if (/kohle|koks/.test(t)) return "kohle";
+  if (/öl|heizöl/.test(t)) return "oel";
+  if (/pellet|holz|hackschn|biomasse/.test(t)) return "bio";
+  if (/gas/.test(t)) return "gas";
+  if (/fernw/.test(t)) return "fern";
+  return "";
+}
+/** Inbetriebnahme: „2004“, „05.2004“, „5/2004“, „12.05.2004“ oder „2004-05-12“ */
+function kgbIb(v) {
+  const s = String(v || "").trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/))) return { y: +m[1], m: +m[2], t: m[3] ? +m[3] : 0 };
+  if ((m = s.match(/^(?:(\d{1,2})\.)?(\d{1,2})[./](\d{4})$/))) return { y: +m[3], m: +m[2], t: m[1] ? +m[1] : 0 };
+  if ((m = s.match(/^(\d{4})$/))) return { y: +m[1], m: 0, t: 0 };
+  return null;
+}
+/** Prüft den Klimageschwindigkeitsbonus. ok = wird gerechnet; offen = Angabe fehlt noch */
+function kgbPruef(d) {
+  const datum = (d && d.datum) || heute(), satz = stufe(datum)[2], name = (ALT_HEIZ.find(x => x[0] === d.alt) || [, ""])[1];
+  const nein = (txt, offen) => ({ ok: false, satz, txt, offen: !!offen });
+  if (d.nutzung !== "selbst") return nein("nur für selbst nutzende Eigentümer");
+  if (!satz) return nein("bei Antrag ab 01.08.2028 entfallen");
+  if (!d.alt) return nein("bisherige Heizung wählen", 1);
+  if (![...KGB_IMMER, ...KGB_ALTER].includes(d.alt)) return nein("bisherige Heizung nicht begünstigt");
+  let alterTxt = "";
+  if (KGB_ALTER.includes(d.alt)) {
+    const ib = kgbIb(d.alt_ib), haken = d.alt20 === true || d.alt20 === "ja";
+    if (!ib) { if (!haken) return nein("Haken „mind. 20 Jahre in Betrieb“ setzen oder Inbetriebnahme eintragen", 1);
+      alterTxt = "laut Angabe mind. 20 Jahre in Betrieb"; }
+    else { const [ay, am, at] = datum.split("-").map(Number);
+      const zuJung = j => nein("laut Inbetriebnahme erst " + j + " Jahre in Betrieb – mind. 20 Jahre nötig" + (haken ? " (Haken passt nicht zum Datum)" : ""));
+      if (ib.m) { let mon = (ay - ib.y) * 12 + (am - ib.m); if (ib.t && at < ib.t) mon--;
+        if (mon < 240) return zuJung(Math.floor(mon / 12));
+        if (mon === 240 && !ib.t && !haken) return nein("genau 20 Jahre – Tag der Inbetriebnahme eintragen oder Haken setzen", 1);
+        alterTxt = Math.floor(mon / 12) + " Jahre in Betrieb"; }
+      else { const j = ay - ib.y;
+        if (j < 20) return zuJung(j);
+        if (j === 20 && !haken) return nein("genau 20 Jahre – Monat der Inbetriebnahme eintragen (MM.JJJJ) oder Haken setzen", 1);
+        alterTxt = j === 20 ? "Inbetriebnahme " + ib.y + ", laut Angabe mind. 20 Jahre" : "mind. " + (j - 1) + " Jahre in Betrieb"; } } }
+  if (d.funkt !== "ja") return d.funkt === "nein" ? nein("Altanlage nicht funktionstüchtig") : nein("Funktionstüchtigkeit der Altanlage bestätigen", 1);
+  return { ok: true, satz, txt: name.replace(/ \(.*\)$/, "") + (alterTxt ? ", " + alterTxt : "") + ", funktionstüchtig" };
+}
+function kgbHinweis(d, p) {
+  const st = STUFEN.filter(x => x[2] > 0).map(x => x[2] + " % ab " + datDE(x[0])).join(", ");
+  return (p.ok ? "Klimageschwindigkeitsbonus " + p.satz + " % erfüllt (" + p.txt + "). " : "Klimageschwindigkeitsbonus nicht berücksichtigt: " + p.txt + ". ") +
+    "Voraussetzungen (KfW-Merkblatt 458): selbst genutzte Wohneinheit; Austausch einer funktionstüchtigen Öl-, Kohle-, Gas-Etagen- oder Nachtstromspeicherheizung (Alter egal) " +
+    "oder einer funktionstüchtigen Gas- oder Biomasseheizung mit Inbetriebnahme mind. 20 Jahre vor Antragstellung. Maßgeblich ist das Antragsdatum: " + st + ", ab 01.08.2028 kein Bonus. " +
+    "Nachweise: Meldebestätigung, Grundbuchauszug, Nachweis der Inbetriebnahme (z. B. Typenschild, Schornsteinfegerprotokoll); die Altanlage wird ausgebaut und entsorgt.";
+}
+// Formularfelder: Inbetriebnahme ergänzen, Biomasse-Kombination ausblenden, Funktionstüchtigkeit für alle begünstigten Altanlagen
+for (const t of ["foerder", "wpj"]) { const C = CALC[t]; if (!C) continue;
+  for (const s of C.sec || []) { const i = (s.f || []).findIndex(f => f.k === "funkt"); if (i < 0) continue;
+    s.f[i].show = d => KGB_ALT.includes(kgbMigrate(d).alt) && d.nutzung === "selbst";
+    s.f.splice(i, 0, F.t("alt_ib", "Inbetriebnahme Altanlage", { ph: "Jahr oder MM.JJJJ (Typenschild)", re: 1, show: d => KGB_ALTER.includes(kgbMigrate(d).alt) && d.nutzung === "selbst" }),
+      F.c("alt20", "Altanlage bei Antragstellung mind. 20 Jahre in Betrieb", { re: 1, show: d => KGB_ALTER.includes(kgbMigrate(d).alt) && d.nutzung === "selbst" }));
+    for (const f of s.f) if (f.k === "bioKombi") f.show = () => false;
+    for (const f of s.f) if (f.k === "funkt") f.re = 1; }
+  const init = C.init; C.init = k => { const d = init(k); d.alt = kgbAusKunde(k); d.funkt = k && (k.h_funktion === "ja" || k.h_funktion === "nein") ? k.h_funktion : ""; d.alt_ib = (k && k.h_bj) || ""; return d; };
+  const calc = C.calc; C.calc = function (d) {
+    if (t === "foerder") foeMigrate(d); kgbMigrate(d);
+    const p = kgbPruef(d), d2 = Object.assign({}, d, { alt: p.ok ? "oel" : "keine", funkt: p.ok ? "ja" : "nein", bioKombi: "ja" });
+    const r = calc.call(this, d2);
+    for (const row of r.rows || []) if (/^Klimageschwindigkeitsbonus/.test(row[0])) { if (!p.ok) { row[0] = "Klimageschwindigkeitsbonus 0 %"; row[1] = p.txt; } else if (!row[1]) row[1] = p.txt; }
+    r.notes = (r.notes || []).filter(n => !/^Biomasse: Klimageschwindigkeitsbonus nur/.test(n) && !/setzt eine funktionstüchtige Altanlage voraus/.test(n));
+    if (isBio(d.heizart)) r.notes.push("Biomasse: Staub- und Wirkungsgrad-Mindestanforderungen beachten; Biomasse wird nur mit Solarthermie, PV-Warmwasser oder Wärmepumpe sinnvoll im Sommer betrieben (keine Förderbedingung mehr).");
+    if (d.nutzung === "selbst") r.notes.splice(1, 0, kgbHinweis(d, p));
+    return r; };
+}
+if (typeof HILFE !== "undefined") {
+  HILFE.alt_ib = ["Jahr (oder Monat/Jahr) der Inbetriebnahme der alten Gas- oder Biomasseheizung – steht auf dem Typenschild oder im Schornsteinfegerprotokoll. Für den Klimageschwindigkeitsbonus müssen bei Antragstellung mind. 20 Jahre vergangen sein.", "05.2004"];
+  HILFE.alt20 = ["Haken setzen, wenn die alte Gas- oder Biomasseheizung bei Antragstellung mindestens 20 Jahre in Betrieb ist. Ist zusätzlich die Inbetriebnahme eingetragen, rechnet die App mit dem Datum nach. Nachweis (Typenschild, Schornsteinfegerprotokoll) bereithalten.", "Ja"];
+  HILFE.funkt = ["Der Klimageschwindigkeitsbonus gibt es nur, wenn die alte Heizung noch funktionstüchtig ist – auch bei Gas- und Biomasseheizungen über 20 Jahre. Bei einem Heizungsdefekt entfällt der Bonus.", "Ja"]; }
+// Hinweis in den Erfassungsbögen (Heizung): gleiche Regeln
+heizHinweis = function (d) {
+  const a = d.h_art; if (!a) return h("div", { class: "info" }, "Wärmeerzeuger wählen – dann zeigt die App die Förder-Hinweise.");
+  const typ = kgbAusKunde({ h_art: a, h_et: d.h_et }), bj = num(d.h_bj), alter = bj ? new Date().getFullYear() - bj : 0, satz = stufe(heute())[2], t = [];
+  if (bj) t.push("Alter der Anlage: " + alter + " Jahre.");
+  if (!satz) t.push("Kein Klimageschwindigkeitsbonus mehr (Anträge ab 01.08.2028).");
+  else if (KGB_IMMER.includes(typ)) t.push("Klimageschwindigkeitsbonus möglich (unabhängig vom Alter), wenn die Anlage funktionstüchtig ist und der Eigentümer selbst darin wohnt – aktuell " + satz + " %.");
+  else if (KGB_ALTER.includes(typ)) t.push(!bj ? "Gas-/Biomasseheizung: Klimageschwindigkeitsbonus nur bei Inbetriebnahme mind. 20 Jahre vor Antrag – Baujahr eintragen." :
+    alter > 20 ? "Klimageschwindigkeitsbonus möglich (über 20 Jahre in Betrieb), wenn funktionstüchtig und selbst bewohnt – aktuell " + satz + " %." :
+    alter === 20 ? "Genau 20 Jahre: Monat der Inbetriebnahme prüfen – maßgeblich ist das Antragsdatum." : "Erst " + alter + " Jahre in Betrieb: kein Klimageschwindigkeitsbonus (mind. 20 Jahre nötig).");
+  else if (typ) t.push("Diese Heizung ist für den Klimageschwindigkeitsbonus nicht begünstigt.");
+  if (d.h_funktion === "nein") t.push("Nicht funktionstüchtig: Klimageschwindigkeitsbonus entfällt.");
+  if (num(d.h_vl) > 55) t.push("Vorlauf über 55 °C: vor einer Wärmepumpe Heizflächen prüfen.");
+  if (!fossil(a)) t.push("Keine fossile Heizung erfasst.");
+  return h("div", { class: "info" }, t.join(" ") || "Keine besonderen Hinweise.");
+};
+
+/* ===== PDF-Vorschau: Zurück immer erreichbar =====
+   Auf dem iPhone lag die Kopfzeile mit „Schließen“ teils unter Statusleiste / Kamera-Aussparung.
+   Jetzt: Kopfzeile mit sicherem Abstand, „Zurück“ statt „Schließen“, und unten eine feste Leiste mit großem
+   „Zurück“-Knopf (über dem Home-Balken). Zusätzlich schließt die Wisch-/Zurück-Geste des Geräts die Vorschau. */
+(function () {
+  const orig = pdfZeigen;
+  pdfZeigen = function (blob, name, mail) {
+    const vorher = new Set(document.querySelectorAll(".pvscrim"));
+    const p = orig(blob, name, mail);
+    const scr = [...document.querySelectorAll(".pvscrim")].find(s => !vorher.has(s));
+    if (scr) {
+      const zu = scr.querySelector(".pvh button"); // der vorhandene Schließen-Knopf
+      if (zu) zu.replaceChildren(ic("chev", "s"), "Zurück"), zu.classList.add("pv-zurueck");
+      const schliessen = () => { if (document.body.contains(scr) && zu) zu.click(); };
+      scr.append(h("div", { class: "pvfoot" }, h("button", { type: "button", class: "btn pvfoot-z", onclick: schliessen }, ic("chev", "s"), "Zurück")));
+      // Geräte-Zurück (Android-Taste, Wischgeste) schließt die Vorschau statt die App zu verlassen
+      try { history.pushState({ pv: 1 }, ""); const pop = () => { window.removeEventListener("popstate", pop); schliessen(); };
+        window.addEventListener("popstate", pop);
+        new MutationObserver((m, o) => { if (!document.body.contains(scr)) { o.disconnect(); window.removeEventListener("popstate", pop); if (history.state && history.state.pv) history.back(); } }).observe(document.body, { childList: true }); } catch (e) { }
+    }
+    return p;
+  };
+})();
+(function () { const s = document.createElement("style"); s.textContent = `
+.pvscrim{padding-top:env(safe-area-inset-top,0px)}
+.pvh{padding-top:10px!important;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));box-shadow:0 1px 0 rgba(0,0,0,.08);position:relative;z-index:2}
+.pv-zurueck svg{transform:rotate(180deg)}
+.pvb{padding-bottom:90px!important}
+.pvfoot{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;justify-content:center;padding:10px 16px max(12px,env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(59,70,64,0),rgba(59,70,64,.85) 40%)}
+.pvfoot-z{min-width:200px;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.35)}.pvfoot-z svg{transform:rotate(180deg)}
+.pvscrim{position:fixed}
+`; document.head.append(s); })();
+
+/* ===== Einkommensbonus: Auswahl der Einkommensbereiche statt Betrag (KfW-Merkblatt 458) =====
+   Bereiche des zu versteuernden Haushaltseinkommens (Mittel 2. und 3. Jahr vor Antrag). Mit Kind unter 18
+   gilt der Familienzuschlag (+10.000 € auf jede Grenze) – das rechnet die App über den Haken „Kind unter 18“. */
+const ZVE_ST = [["0", "keine Angabe – ohne Einkommensbonus"], ["30", "bis 30.000 €"], ["40", "30.001 – 40.000 €"], ["50", "40.001 – 50.000 €"], ["60", "50.001 – 60.000 €"], ["99", "über 60.000 €"]];
+const ZVE_WERT = { "30": 30000, "40": 40000, "50": 50000, "60": 60000, "99": 99999 };
+function zveBereich(v) { const z = num(v); if (v === "" || v == null || !z && String(v).trim() === "") return ""; return z <= 30000 ? "30" : z <= 40000 ? "40" : z <= 50000 ? "50" : z <= 60000 ? "60" : "99"; }
+function zveSync(d) {
+  if (d.zve_st == null) d.zve_st = zveBereich(d.zve);            // alte Vorgänge mit Betrag übernehmen
+  d.zve = ZVE_WERT[d.zve_st] ? String(ZVE_WERT[d.zve_st]) : "";           // Rechenwert = Obergrenze des Bereichs
+  return d;
+}
+function zveErgebnis(d) {
+  if (d.nutzung !== "selbst") return ""; if (!ZVE_WERT[d.zve_st]) return "Ohne Angabe wird kein Einkommensbonus gerechnet.";
+  let z = ZVE_WERT[d.zve_st]; if (d.kind === "ja") z -= 10000;
+  const b = z <= 30000 ? 40 : z <= 40000 ? 30 : z <= 50000 ? 10 : 0;
+  return "Einkommensbonus " + b + " %" + (d.kind === "ja" ? " (mit Familienzuschlag)" : "") + " · Fördergrenze " + (z <= 30000 ? 80 : 70) + " %.";
+}
+for (const t of ["foerder", "wpj"]) { const C = CALC[t]; if (!C) continue;
+  for (const s of C.sec || []) { const i = (s.f || []).findIndex(f => f.k === "zve"); if (i < 0) continue;
+    const alt = s.f[i];
+    s.f[i] = F.s("zve_st", "Zu versteuerndes Haushaltseinkommen", ZVE_ST, { re: 1, full: 1, show: alt.show || (d => d.nutzung === "selbst"), after: d => zveSync(d) });
+    const k = s.f.findIndex(f => f.k === "kind");
+    if (k >= 0) { s.f[k] = Object.assign({}, s.f[k], { l: "Kind unter 18 im Haushalt (Familienzuschlag)", re: 1, after: d => zveSync(d) });
+      s.f.splice(k + 1, 0, { ty: "info", zveInfo: 1, k: "zve_info", show: d => d.nutzung === "selbst" }); } }
+  const init = C.init; C.init = k => { const d = init(k); d.zve_st = ""; d.zve = ""; return d; };
+  const calc = C.calc; C.calc = function (d) { zveSync(d); return calc.call(this, d); };
+}
+if (typeof HILFE !== "undefined") HILFE.zve_st = ["Zu versteuerndes Haushaltseinkommen (Mittel aus dem 2. und 3. Jahr vor Antragstellung, laut Steuerbescheid). Die KfW rechnet nur nach diesen Bereichen. Mit Kind unter 18 verschiebt sich jede Grenze um 10.000 € – dafür den Haken „Kind unter 18“ setzen.", "30.001 – 40.000 €"];
+(function () { const f0 = field; field = function (f, data, ch) { if (f && f.zveInfo) return h("div", { class: "info" }, zveErgebnis(data)); return f0(f, data, ch); }; })();
 
 </script>
 </body></html>
