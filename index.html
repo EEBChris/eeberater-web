@@ -2186,7 +2186,7 @@ function vKunden(v) {
     rc(list, h("div", { class: "card list" }, ks.map(k => h("button", { class: "row", style: typeof kalZustStil === "function" ? kalZustStil(k) : null, onclick: () => go("kunde", { id: k.id }) },
       h("div", { class: "av" }, initials(k)),
       h("div", { class: "rt" }, h("b", null, kName(k)), h("span", null, objAdr(k) || "Keine Adresse"),
-        h("div", { class: "chips", style: "margin-top:5px" }, h("span", { class: "chip st" }, statusName(statusOf(k))), k.typ ? h("span", { class: "chip" }, k.typ) : null, k.baujahr ? h("span", { class: "chip gray" }, "Bj. " + k.baujahr) : null,
+        h("div", { class: "chips", style: "margin-top:5px" }, h("span", { class: "chip st" }, statusName(statusOf(k))), k.typ ? h("span", { class: "chip" }, gebName(k.typ)) : null, k.baujahr ? h("span", { class: "chip gray" }, "Bj. " + k.baujahr) : null,
           k.stat && k.stat.vollmacht ? h("span", { class: "chip ok" }, "Vollmacht") : h("span", { class: "chip warn" }, "Vollmacht fehlt"),
           k.stat && k.stat.n ? h("span", { class: "chip gray" }, k.stat.n + " Protokolle") : null, k.beispiel ? h("span", { class: "chip gray" }, "Beispiel") : null)),
       ic("chev", "chev")))));
@@ -2250,7 +2250,7 @@ function vKunde(v, p) {
   const drawV = () => {
     const vs = S.vorg.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
     const hatVoll = vs.some(x => x.typ === "vollmacht" && x.sig && x.sig.kunde) || S.dateien.some(d => d.kat === VOLL_KAT);
-    rc(heroChips, k.typ ? h("span", { class: "chip" }, k.typ) : null, k.baujahr ? h("span", { class: "chip" }, "Bj. " + k.baujahr) : null, k.flaeche && !nwg ? h("span", { class: "chip" }, nf(num(k.flaeche)) + " m²") : null, nwg && k.ngf ? h("span", { class: "chip" }, nf(num(k.ngf)) + " m² NGF") : null,
+    rc(heroChips, k.typ ? h("span", { class: "chip" }, gebName(k.typ)) : null, k.baujahr ? h("span", { class: "chip" }, "Bj. " + k.baujahr) : null, k.flaeche && !nwg ? h("span", { class: "chip" }, nf(num(k.flaeche)) + " m²") : null, nwg && k.ngf ? h("span", { class: "chip" }, nf(num(k.ngf)) + " m² NGF") : null,
       hatVoll ? h("span", { class: "chip ok" }, "Vollmacht unterschrieben") : h("span", { class: "chip warn" }, "Vollmacht fehlt"));
     // Status am Kunden für die Liste merken (nur bei Änderung schreiben)
     const stat = { vollmacht: hatVoll, n: vs.length };
@@ -2533,7 +2533,7 @@ function wbkView(x, change, k) {
   box.append(h("section", { class: "card fsec", style: "padding-top:12px" },
     h("div", { style: "display:flex;gap:12px;align-items:center;flex-wrap:wrap" }, h("div", { class: "av" }, ic("house")),
       h("div", { style: "flex:1;min-width:200px" }, h("b", null, "Gebäudedaten"),
-        h("div", { class: "mut" }, g ? (k ? kName(k) + " · " : d.massVon ? d.massVon + " · " : "") + (k && k.typ ? k.typ + " · " : "") + (k && k.baujahr ? "Bj. " + k.baujahr + " · " : "") + nf(num(d.g_l), 1) + " × " + nf(num(d.g_b), 1) + " m · " + (num(d.g_gs) || 2) + " Geschosse · ca. " + g.nFen + " Fenster · Hüllfläche ca. " + (d.A_huelle || "–") + " m²"
+        h("div", { class: "mut" }, g ? (k ? kName(k) + " · " : d.massVon ? d.massVon + " · " : "") + (k && k.typ ? gebName(k.typ) + " · " : "") + (k && k.baujahr ? "Bj. " + k.baujahr + " · " : "") + nf(num(d.g_l), 1) + " × " + nf(num(d.g_b), 1) + " m · " + (num(d.g_gs) || 2) + " Geschosse · ca. " + g.nFen + " Fenster · Hüllfläche ca. " + (d.A_huelle || "–") + " m²"
           : "Keine Gebäudemaße – Längen selbst eintragen oder von einem Kunden übernehmen.")),
       k ? h("button", { class: "btn sec", onclick: () => neuLaengen(k) }, ic("house"), "Längen neu übernehmen") : h("button", { class: "btn sec", onclick: () => pickKunde(neuLaengen) }, ic("users"), "Daten von Kunde"))));
   box.append(formView([{ t: "Projekt", f: [F.combo("massn", "Geplante Maßnahme", ["Fassadendämmung (WDVS)", "Fenstertausch", "Dachsanierung", "Dämmung oberste Geschossdecke", "Kellerdeckendämmung", "Komplettsanierung / Effizienzhaus", "Neubau"]), F.d("datum", "Datum"), F.n("A_huelle", "Wärmeübertragende Hüllfläche A", "m²")] }], d, { onChange: change }));
@@ -2802,7 +2802,7 @@ function pdfUWert(f, val, d) {
 async function pdfVorgang(k, x, zeigen) {
   toast("PDF wird erstellt …");
   const T = TYPEN[x.typ]; const P = pdfStart(x.titel || T.name, T.name !== (x.titel || T.name) ? T.name : "", { art: x.typ === "vollmacht" ? "Vollmacht" : T.calc ? "Berechnung" : "Protokoll", meta: [["Auftraggeber", (k.anrede && k.anrede !== "Firma" ? k.anrede + " " : "") + kName(k)], ["Objekt", objAdr(k)], ["Datum", datDE((x.d && x.d.datum) || lokalTag(x.created))], ["Status", x.status === "fertig" ? "abgeschlossen" : "in Bearbeitung"]] }); if (!P) return;
-  P.sectL("Gebäude und Kontakt"); if (kAdr(k) !== objAdr(k)) P.kv("Anschrift Auftraggeber", kAdr(k)); P.kv("Gebäude", [k.typ, k.baujahr && "Baujahr " + k.baujahr, k.flaeche && k.flaeche + " m² Wohnfläche", k.we && k.we + " WE", k.ngf && k.ngf + " m² NGF"].filter(Boolean).join(", ")); P.kv("Telefon / E-Mail", [k.tel, k.email].filter(Boolean).join(" · "));
+  P.sectL("Gebäude und Kontakt"); if (kAdr(k) !== objAdr(k)) P.kv("Anschrift Auftraggeber", kAdr(k)); P.kv("Gebäude", [gebName(k.typ), k.baujahr && "Baujahr " + k.baujahr, k.flaeche && k.flaeche + " m² Wohnfläche", k.we && k.we + " WE", k.ngf && k.ngf + " m² NGF"].filter(Boolean).join(", ")); P.kv("Telefon / E-Mail", [k.tel, k.email].filter(Boolean).join(" · "));
   if (x.typ === "vollmacht") { P.sect("Vollmacht"); P.para(`Hiermit bevollmächtige ich ${S.profil.name}, ${S.profil.firma}${S.profil.eeeNr ? " (Energieeffizienz-Expertenliste Nr. " + S.profil.eeeNr + ")" : ""}, in meinem Namen für das oben genannte Objekt tätig zu werden. Die Vollmacht umfasst:`); }
   for (const sec of T.sec) {
     if (x.typ !== "vollmacht") P.sectL(sec.t); else if (sec.k !== "umfang") P.sectL(sec.t); else P.pend = null;
@@ -3188,7 +3188,7 @@ function antragsGruppen(k) {
   const p = S.profil, g = [], nutz = { selbst: "selbst bewohnt", vermietet: "vermietet", weg: "WEG", gewerbe: "gewerblich" };
   g.push(["Antragsteller / Eigentümer", [["Anrede", k.anrede], ["Vorname", k.vorname], ["Nachname", k.nachname], ["Firma / WEG", k.firma], ["Straße und Hausnummer", k.strasse], ["PLZ", k.plz], ["Ort", k.ort], ["Telefon", k.tel], ["E-Mail", k.email]]]);
   const o = k.objGleich !== false ? [k.strasse, k.plz, k.ort] : [k.objStrasse, k.objPlz, k.objOrt];
-  g.push(["Investitionsobjekt", [["Straße und Hausnummer", o[0]], ["PLZ", o[1]], ["Ort", o[2]], ["Gebäudeart", k.typ], ["Baujahr", k.baujahr], ["Wohnfläche (m²)", k.flaeche], ["Wohneinheiten", k.we], ["Nettogrundfläche (m²)", k.ngf], ["Nutzung", nutz[k.nutzung] || k.nutzung]]]);
+  g.push(["Investitionsobjekt", [["Straße und Hausnummer", o[0]], ["PLZ", o[1]], ["Ort", o[2]], ["Gebäudeart", gebName(k.typ)], ["Baujahr", k.baujahr], ["Wohnfläche (m²)", k.flaeche], ["Wohneinheiten", k.we], ["Nettogrundfläche (m²)", k.ngf], ["Nutzung", nutz[k.nutzung] || k.nutzung]]]);
   g.push(["Energieeffizienz-Experte", [["Name", p.name], ["Firma", p.firma], ["Anschrift", [p.strasse, [p.plz, p.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ")], ["Expertenlisten-Nr.", p.eeeNr], ["Telefon", p.tel], ["E-Mail", p.email]]]);
   for (const v of letzte("em")) { const d = v.d || {}; g.push([v.titel || "Einzelmaßnahme", [["Bauteil", btName(d.massnahme)], ["Himmelsrichtung", d.bt_ori], ["Fläche (m²)", d.flaeche], ["U-Wert vorher", d.u_alt], ["U-Wert nachher", d.u_ist || d.u_plan], ["Dämmstoff", d.material], ["Produkt", d.produkt], ["Wärmeleitfähigkeit", d.wlg], ["Dämmstärke (cm)", d.staerke], ["Fachunternehmen", d.firma], ["Ausführungszeitraum", d.zeitraum], ["BAFA-Vorgangsnummer", d.bafa]]]); }
   for (const v of letzte("heizung").slice(0, 1)) { const d = v.d || {}; g.push(["Heizungstausch", [["Neue Heizung", d.art], ["Hersteller", d.h], ["Modell", d.m], ["Seriennummer", d.sn], ["Heizleistung (kW)", d.kw], ["Kältemittel", d.km], ["JAZ (VDI 4650)", d.jaz], ["SCOP", d.scop], ["ETAs (%)", d.etas], ["Schallleistung (dB(A))", d.schall], ["Heizlast (kW)", d.heizlast], ["Vorlauftemperatur (°C)", d.vl], ["Ersetzte Heizung", d.alt], ["Baujahr ersetzte Heizung", d.alt_bj], ["Inbetriebnahme", d.ibn ? datDE(d.ibn) : ""], ["Fachunternehmen", d.firma], ["KfW-Antragsnummer", d.kfw]]]); }
@@ -3257,13 +3257,13 @@ const CALC2 = {
     sec: [
       { k: "g1", t: "Gebäude und Eigentümer", f: [F.s("typ", "Gebäudeart", [["EFH", "Einfamilienhaus"], ["DHH", "Doppelhaushälfte"], ["RH", "Reihenhaus"], ["ZFH", "Zweifamilienhaus"], ["MFH", "Mehrfamilienhaus"], ["NWG", "Nichtwohngebäude"]], { re: 1 }),
         F.s("nutzung", "Nutzung", [["selbst", "selbst bewohnt"], ["vermietet", "vermietet"], ["weg", "WEG"], ["gewerbe", "gewerblich"]], { re: 1 }), F.n("we", "Wohneinheiten", ""),
-        F.seg("seit2002", "Eigentümer bewohnt das Haus schon vor dem 01.02.2002 selbst", OPT_JN, { show: d => ["EFH", "DHH", "RH", "ZFH"].includes(d.typ) }), F.seg("verkauf", "Verkauf oder Neuvermietung geplant", OPT_JN)] },
+        F.seg("seit2002", "Eigentümer bewohnt das Haus schon vor dem 01.02.2002 selbst", OPT_JN, { show: d => GEB_EZFH.includes(d.typ) }), F.seg("verkauf", "Verkauf oder Neuvermietung geplant", OPT_JN)] },
       { k: "g2", t: "Heizung", f: [F.combo("alt", "Vorhandene Heizung", VG.heizung), F.t("alt_bj", "Baujahr", { im: "numeric" }), F.n("kw", "Nennleistung", "kW"),
         F.s("plan", "Geplante neue Heizung", PLAN_HEIZ, { re: 1 }), F.d("einbau", "Geplanter Einbau", { show: d => d.plan !== "keine" })] },
       { k: "g3", t: "Gebäudehülle und Leitungen", f: [F.s("ogd", "Oberste Geschossdecke / Dach", [["gedaemmt", "gedämmt (Decke oder Dach darüber)"], ["ungedaemmt", "ungedämmt, zugänglich"], ["nv", "nicht vorhanden / beheiztes DG"]]),
         F.s("rohre", "Heizungs- und Warmwasserleitungen im unbeheizten Bereich", [["gedaemmt", "gedämmt"], ["teilweise", "teilweise gedämmt"], ["ungedaemmt", "ungedämmt"], ["keine", "keine im unbeheizten Bereich"]]), F.a("bem", "Bemerkung")] }],
     calc(d) {
-      const rows = [], efh = ["EFH", "DHH", "RH", "ZFH"].includes(d.typ), alt2002 = efh && d.seit2002 === "ja", miete = d.nutzung === "vermietet"; let pf = 0, hw = 0;
+      const rows = [], efh = GEB_EZFH.includes(d.typ), alt2002 = efh && d.seit2002 === "ja", miete = d.nutzung === "vermietet"; let pf = 0, hw = 0;
       const add = (t, s, c) => { rows.push([t, s, c]); if (c === "b") pf++; else if (c !== "s") hw++; };
       add("Austauschpflicht für alte Heizkessel (30 Jahre)", "entfallen (GModG seit 29.07.2026)", "s");
       if (geoFossil(d.plan)) { add("Bio-Treppe für neue Gas-/Öl-/Flüssiggasheizung (§ 43)", "ab 2029: 10 % · 2030: 15 % · 2035: 30 % · 2040: 60 % biogener/synthetischer Anteil", "b");
@@ -7153,6 +7153,40 @@ function zeichKarte() {
 .zb-l{display:flex;flex-direction:column;gap:6px}.zb-p{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:12px;font:inherit;font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
 .zb-p i{width:14px;height:14px;border-radius:50%;background:var(--c)}.zb-p.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--card));font-weight:700}
 `; document.head.append(s); })();
+
+/* ===== Gebäudetyp: vollständige Liste in allen Erfassungsbögen =====
+   Ersetzt die kurze Liste (EFH/DHH/RH/ZFH/MFH) in Kundendaten, iSFP, Bedarfs- und Verbrauchsausweis und GEG-Check
+   und ergänzt den Gebäudetyp in Abnahme Einzelmaßnahme und Heizungsabnahme (vorbelegt aus der Kundenakte).
+   Bestehende Werte bleiben gültig (RH = Reihenmittelhaus). Der Förderrechner rechnet weiter mit seinen 5 Kategorien. */
+const GEB_TYPEN = [
+  ["EFH", "Einfamilienhaus (freistehend)"], ["EFH_ELW", "Einfamilienhaus mit Einliegerwohnung"], ["BUN", "Bungalow"],
+  ["DHH", "Doppelhaushälfte"], ["REH", "Reihenendhaus"], ["RH", "Reihenmittelhaus"], ["ZFH", "Zweifamilienhaus"],
+  ["MFH", "Mehrfamilienhaus (3–12 Wohnungen)"], ["GMH", "Großes Mehrfamilienhaus (ab 13 Wohnungen)"], ["HH", "Hochhaus"],
+  ["ETW", "Eigentumswohnung"], ["WGH", "Wohn- und Geschäftshaus"], ["BH", "Bauernhaus / Resthof"], ["FH", "Ferien- / Wochenendhaus"]];
+const GEB_NWG = ["NWG", "Nichtwohngebäude"];
+const GEB_EZFH = ["EFH", "EFH_ELW", "BUN", "DHH", "REH", "RH", "ZFH", "BH", "FH"];   // Ein- und Zweifamilienhäuser
+const GEB_FOERDER = { EFH_ELW: "ZFH", BUN: "EFH", REH: "RH", BH: "EFH", FH: "EFH", GMH: "MFH", HH: "MFH", ETW: "MFH", WGH: "MFH" };
+function gebName(t) { const x = GEB_TYPEN.find(g => g[0] === t) || (t === "NWG" ? GEB_NWG : null); return x ? x[1].replace(/ \(.*\)$/, "") : (t || ""); }
+function gebFoerder(t) { return ["EFH", "DHH", "RH", "ZFH", "MFH"].includes(t) ? t : GEB_FOERDER[t] || "EFH"; }
+(function () {
+  const kurz = o => Array.isArray(o) && o.length >= 5 && o[0][0] === "EFH" && o.some(x => x[0] === "DHH");
+  const ersetze = f => { if (!f || f.k !== "typ" || f.ty !== "sel" || !kurz(f.opts)) return; const nwg = f.opts.some(x => x[0] === "NWG");
+    f.opts.splice(0, f.opts.length, ...GEB_TYPEN, ...(nwg ? [GEB_NWG] : [])); f.l = "Gebäudetyp"; };
+  const alle = [];
+  for (const T of Object.values(TYPEN)) if (Array.isArray(T.sec)) for (const s of T.sec) alle.push(...(s.f || []));
+  if (typeof CALC !== "undefined") for (const C of Object.values(CALC)) if (Array.isArray(C.sec)) for (const s of C.sec) alle.push(...(s.f || []));
+  if (typeof KUNDE_SEC !== "undefined") for (const s of KUNDE_SEC) alle.push(...(s.f || []));
+  alle.forEach(ersetze);
+  // Abnahmen: Gebäudetyp ergänzen
+  for (const t of ["em", "heizung"]) { const T = TYPEN[t]; if (!T || !T.sec || !T.sec[0]) continue;
+    if (T.sec.some(s => (s.f || []).some(f => f.k === "typ"))) continue;
+    T.sec[0].f.push(F.s("typ", "Gebäudetyp", GEB_TYPEN.slice()));
+    const init = T.init; T.init = k => Object.assign({ typ: (k && k.typ) || "" }, init(k)); }
+  // Förderrechner: Kundentyp auf seine Kategorien abbilden
+  if (typeof CALC !== "undefined" && CALC.foerder) { const init = CALC.foerder.init; CALC.foerder.init = k => { const d = init(k); if (k && k.typ) d.geb = gebFoerder(k.typ); return d; }; }
+  // Sanierungsmappe: neue Typen zuordnen
+  if (typeof SM_TYP_R !== "undefined") Object.assign(SM_TYP_R, { EFH_ELW: "Einfamilienhaus", BUN: "Einfamilienhaus", REH: "Reihenhaus", GMH: "Mehrfamilienhaus", HH: "Mehrfamilienhaus", ETW: "Eigentumswohnung", WGH: "Mehrfamilienhaus", BH: "Einfamilienhaus", FH: "Einfamilienhaus" });
+})();
 
 /* ===== Erfassungsbögen: „Sonstiges …“ in jedem Auswahlfeld =====
    Jede Auswahl (Liste oder Knöpfe) bekommt die Möglichkeit „Sonstiges …“ mit einem Feld zum freien Eintragen.
